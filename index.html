@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tessa AI – Over/Under Predictor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0b0e14; color:#e8edf5; padding:20px; }
+    .app-wrapper { max-width:1440px; margin:0 auto; }
+    .header { display:flex; justify-content:space-between; align-items:center; background:#131a24; padding:16px 24px; border-radius:16px; border:1px solid #1f2a38; margin-bottom:24px; flex-wrap:wrap; gap:12px; }
+    .logo { display:flex; align-items:center; gap:14px; }
+    .logo-icon { width:44px; height:44px; background:linear-gradient(145deg,#1f8b4c,#2fbf6a); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800; color:#fff; }
+    .logo-text { font-size:22px; font-weight:700; } .logo-text span { color:#2fbf6a; }
+    .logo-sub { font-size:12px; color:#8896a8; }
+    .header-actions { display:flex; gap:12px; flex-wrap:wrap; }
+    .btn { padding:8px 20px; border:none; border-radius:30px; font-weight:600; font-size:14px; cursor:pointer; font-family:'Inter',sans-serif; display:inline-flex; align-items:center; gap:8px; }
+    .btn-primary { background:linear-gradient(145deg,#1f8b4c,#2fbf6a); color:#fff; }
+    .btn-outline { background:transparent; color:#bcc8d9; border:1px solid #2a3848; }
+    .btn-danger { background:#c0392b; color:#fff; }
+    .btn-sm { padding:4px 14px; font-size:12px; }
+    .nav-tabs { display:flex; gap:4px; background:#131a24; border-radius:14px; padding:4px; border:1px solid #1f2a38; margin-bottom:24px; flex-wrap:wrap; }
+    .nav-tab { padding:10px 24px; border-radius:10px; font-weight:600; font-size:14px; color:#8896a8; cursor:pointer; background:transparent; border:none; font-family:'Inter',sans-serif; display:flex; align-items:center; gap:8px; }
+    .nav-tab.active { background:#1f8b4c; color:#fff; }
+    .nav-tab .count { background:#1f2a38; padding:0 10px; border-radius:20px; font-size:11px; color:#bcc8d9; }
+    .nav-tab.active .count { background:rgba(255,255,255,0.15); color:#fff; }
+    .filter-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; background:#131a24; padding:12px 20px; border-radius:14px; border:1px solid #1f2a38; margin-bottom:24px; }
+    .filter-group { display:flex; gap:8px; align-items:center; }
+    .filter-group label { font-size:13px; color:#8896a8; }
+    .filter-btn { padding:4px 16px; border-radius:20px; font-size:12px; font-weight:600; border:1px solid #2a3848; background:transparent; color:#8896a8; cursor:pointer; font-family:'Inter',sans-serif; }
+    .filter-btn.active { background:#1f8b4c; border-color:#1f8b4c; color:#fff; }
+    .filter-btn.conf-high { border-color:#2fbf6a; color:#2fbf6a; }
+    .filter-btn.conf-high.active { background:#2fbf6a; color:#fff; }
+    .filter-btn.conf-med { border-color:#f39c12; color:#f39c12; }
+    .filter-btn.conf-med.active { background:#f39c12; color:#fff; }
+    .filter-btn.conf-low { border-color:#e67e22; color:#e67e22; }
+    .filter-btn.conf-low.active { background:#e67e22; color:#fff; }
+    .filter-spacer { flex:1; }
+    .parlay-toggle { background:#1a2a3a; padding:6px 18px; border-radius:30px; font-size:13px; color:#bcc8d9; border:1px solid #2a3a4e; cursor:pointer; display:flex; align-items:center; gap:10px; }
+    .parlay-toggle .badge { background:#2fbf6a; color:#fff; border-radius:20px; padding:0 10px; font-weight:700; font-size:12px; }
+    .page { display:none; animation:fadeIn 0.3s ease; }
+    .page.active { display:block; }
+    @keyframes fadeIn { 0%{opacity:0;transform:translateY(10px);} 100%{opacity:1;transform:translateY(0);} }
+    .games-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:18px; }
+    .game-card { background:#131a24; border:1px solid #1f2a38; border-radius:16px; padding:18px 20px; transition:all 0.2s; }
+    .game-card:hover { border-color:#2a3a4e; transform:translateY(-2px); }
+    .game-card.selected { border-color:#2fbf6a; box-shadow:0 0 0 2px rgba(47,191,106,0.2); }
+    .game-card .sport-tag { display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 12px; border-radius:20px; background:#1a2a3a; color:#8896a8; margin-bottom:10px; }
+    .game-card .sport-tag.nba { background:#1a2a4a; color:#6a9ad8; }
+    .game-card .sport-tag.football { background:#1a3a2a; color:#6ad89a; }
+    .matchup { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .teams { font-size:16px; font-weight:600; }
+    .teams .vs { color:#4a5a6e; font-weight:400; font-size:13px; margin:0 6px; }
+    .league { font-size:12px; color:#6a7a8e; }
+    .odds-row { display:flex; gap:16px; margin:12px 0 10px; padding:8px 12px; background:#0b0e14; border-radius:10px; font-size:13px; flex-wrap:wrap; }
+    .odd-item .label { color:#6a7a8e; } .odd-item .value { font-weight:700; }
+    .projection-box { display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:12px; border-top:1px solid #1a212c; flex-wrap:wrap; gap:8px; }
+    .pick .pick-label { font-size:12px; color:#6a7a8e; }
+    .pick .pick-value { font-weight:700; font-size:15px; color:#2fbf6a; }
+    .confidence-badge { padding:4px 14px; border-radius:20px; font-size:11px; font-weight:700; text-transform:uppercase; }
+    .confidence-badge.high { background:rgba(47,191,106,0.15); color:#2fbf6a; border:1px solid rgba(47,191,106,0.2); }
+    .confidence-badge.medium { background:rgba(243,156,18,0.15); color:#f39c12; border:1px solid rgba(243,156,18,0.2); }
+    .confidence-badge.low { background:rgba(230,126,34,0.15); color:#e67e22; border:1px solid rgba(230,126,34,0.2); }
+    .select-btn { margin-top:12px; width:100%; padding:8px; border-radius:10px; border:1px solid #2a3848; background:transparent; color:#bcc8d9; font-weight:600; font-size:13px; cursor:pointer; font-family:'Inter',sans-serif; }
+    .select-btn.selected { background:#1f8b4c; border-color:#1f8b4c; color:#fff; }
+    .result-tag { font-size:12px; font-weight:700; padding:2px 14px; border-radius:20px; }
+    .result-tag.won { background:rgba(47,191,106,0.15); color:#2fbf6a; }
+    .result-tag.lost { background:rgba(192,57,43,0.15); color:#e74c3c; }
+    .result-tag.pending { background:rgba(243,156,18,0.12); color:#f39c12; }
+    .reasoning-toggle { font-size:12px; color:#2fbf6a; cursor:pointer; background:none; border:none; font-family:'Inter',sans-serif; }
+    .reasoning-box { display:none; margin-top:8px; padding:10px 12px; background:#0b0e14; border-radius:8px; font-size:12px; color:#bcc8d9; border-left:3px solid #2fbf6a; }
+    .reasoning-box.open { display:block; }
+    .fallback-badge { font-size:10px; background:#c0392b; color:#fff; padding:2px 10px; border-radius:12px; margin-left:8px; }
+    .parlay-panel { background:#131a24; border:1px solid #1f2a38; border-radius:16px; padding:20px; margin-bottom:24px; display:none; }
+    .parlay-panel.open { display:block; }
+    .parlay-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+    .parlay-items { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+    .parlay-item { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#0b0e14; border-radius:10px; border:1px solid #1a212c; font-size:14px; }
+    .parlay-item .remove-btn { color:#e74c3c; cursor:pointer; background:none; border:none; padding:4px 8px; }
+    .parlay-total { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:#0f1a1a; border-radius:12px; border:1px solid #1f2a2a; flex-wrap:wrap; gap:8px; }
+    .parlay-total .total-odds { font-size:22px; font-weight:800; color:#2fbf6a; }
+    .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+    .stat-card { background:#131a24; border:1px solid #1f2a38; border-radius:14px; padding:18px 20px; text-align:center; }
+    .stat-number { font-size:32px; font-weight:800; } .stat-number.green { color:#2fbf6a; } .stat-number.orange { color:#f39c12; } .stat-number.red { color:#e74c3c; }
+    .stat-label { font-size:13px; color:#6a7a8e; margin-top:4px; }
+    .stat-sub { font-size:12px; color:#4a5a6e; }
+    .chart-container { background:#131a24; border:1px solid #1f2a38; border-radius:14px; padding:20px; margin-bottom:24px; }
+    .chart-container canvas { max-height:220px; }
+    .empty-state { text-align:center; padding:60px 20px; color:#6a7a8e; }
+    .stats-table-wrap { overflow-x:auto; }
+    .stats-table { width:100%; border-collapse:collapse; font-size:14px; }
+    .stats-table th { text-align:left; padding:10px 14px; color:#6a7a8e; border-bottom:1px solid #1f2a38; font-size:12px; text-transform:uppercase; }
+    .stats-table td { padding:10px 14px; border-bottom:1px solid #1a212c; }
+    .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; }
+    .status-dot.won { background:#2fbf6a; } .status-dot.lost { background:#e74c3c; } .status-dot.pending { background:#f39c12; }
+    .toast-container { position:fixed; bottom:24px; right:24px; display:flex; flex-direction:column; gap:10px; z-index:999; }
+    .toast { background:#1a212c; border:1px solid #2a3848; padding:14px 22px; border-radius:12px; color:#e8edf5; font-size:14px; box-shadow:0 8px 30px rgba(0,0,0,0.5); display:flex; align-items:center; gap:12px; min-width:240px; animation:slideUp 0.3s ease; }
+    .toast.success i { color:#2fbf6a; } .toast.error i { color:#e74c3c; } .toast.info i { color:#3498db; }
+    @keyframes slideUp { 0%{opacity:0;transform:translateY(20px);} 100%{opacity:1;transform:translateY(0);} }
+    @media (max-width:768px){ .games-grid{grid-template-columns:1fr;} .filter-bar{flex-direction:column;} .nav-tabs{flex-wrap:nowrap;overflow-x:auto;} }
+  </style>
+</head>
+<body>
+<div class="app-wrapper" id="app">
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">T</div>
+      <div><div class="logo-text">Tessa <span>AI</span></div><div class="logo-sub">Over/Under Predictor</div></div>
+    </div>
+    <div class="header-actions">
+      <span class="badge" style="background:#1f2a38;padding:6px 16px;border-radius:30px;font-size:13px;color:#bcc8d9;border:1px solid #2a3848;"><i class="fas fa-circle" style="color:#2fbf6a;font-size:8px;"></i> Live</span>
+      <button class="btn btn-outline btn-sm" onclick="syncGames()"><i class="fas fa-sync-alt"></i> Sync</button>
+      <button class="btn btn-primary btn-sm" onclick="generateDigest()"><i class="fas fa-newspaper"></i> Digest</button>
+    </div>
+  </header>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-page="dashboard"><i class="fas fa-table"></i> Dashboard <span class="count" id="dashCount">0</span></button>
+    <button class="nav-tab" data-page="parlay"><i class="fas fa-layer-group"></i> Parlay <span class="count" id="parlayCount">0</span></button>
+    <button class="nav-tab" data-page="accuracy"><i class="fas fa-chart-line"></i> Accuracy</button>
+    <button class="nav-tab" data-page="digest"><i class="fas fa-newspaper"></i> Digest</button>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-group"><label>Sport</label>
+      <button class="filter-btn active" data-filter="sport" data-value="all">All</button>
+      <button class="filter-btn" data-filter="sport" data-value="nba">🏀 NBA</button>
+      <button class="filter-btn" data-filter="sport" data-value="football">⚽ Football</button>
+    </div>
+    <div class="filter-group"><label>Confidence</label>
+      <button class="filter-btn active" data-filter="confidence" data-value="all">All</button>
+      <button class="filter-btn conf-high" data-filter="confidence" data-value="high">High</button>
+      <button class="filter-btn conf-med" data-filter="confidence" data-value="medium">Med</button>
+      <button class="filter-btn conf-low" data-filter="confidence" data-value="low">Low</button>
+    </div>
+    <div class="filter-spacer"></div>
+    <div class="parlay-toggle" onclick="toggleParlayPanel()"><i class="fas fa-layer-group"></i> Parlay <span class="badge" id="parlayBadge">0</span></div>
+  </div>
+
+  <div class="parlay-panel" id="parlayPanel">
+    <div class="parlay-header"><h3><i class="fas fa-layer-group"></i> Parlay Builder</h3><button class="btn btn-danger btn-sm" onclick="clearParlay()"><i class="fas fa-trash"></i> Clear All</button></div>
+    <div class="parlay-items" id="parlayItems"><div class="empty-state" style="padding:20px 0;"><i class="fas fa-plus-circle" style="font-size:28px;"></i><p style="font-size:14px;">Select games from the Dashboard.</p></div></div>
+    <div class="parlay-total">
+      <span>Selections: <strong id="parlayTotalSelections">0</strong></span>
+      <span>Combined Odds: <span class="total-odds" id="parlayTotalOdds">—</span></span>
+      <button class="btn btn-primary" onclick="placeParlay()"><i class="fas fa-check"></i> Place Parlay</button>
+    </div>
+  </div>
+
+  <div class="page active" id="page-dashboard"><div class="games-grid" id="gamesGrid"></div></div>
+  <div class="page" id="page-parlay">
+    <div class="parlay-panel open" style="display:block;border-color:#2fbf6a;">
+      <div class="parlay-header"><h3><i class="fas fa-layer-group"></i> Your Parlay</h3><button class="btn btn-danger btn-sm" onclick="clearParlay()"><i class="fas fa-trash"></i> Clear All</button></div>
+      <div class="parlay-items" id="parlayItemsPage"></div>
+      <div class="parlay-total">
+        <span>Selections: <strong id="parlayTotalSelectionsPage">0</strong></span>
+        <span>Combined Odds: <span class="total-odds" id="parlayTotalOddsPage">—</span></span>
+        <button class="btn btn-primary" onclick="placeParlay()"><i class="fas fa-check"></i> Place Parlay</button>
+      </div>
+    </div>
+  </div>
+  <div class="page" id="page-accuracy">
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card"><div class="stat-number" id="statTotal">0</div><div class="stat-label">Total Predictions</div></div>
+      <div class="stat-card"><div class="stat-number green" id="statWon">0</div><div class="stat-label">Won</div></div>
+      <div class="stat-card"><div class="stat-number red" id="statLost">0</div><div class="stat-label">Lost</div></div>
+      <div class="stat-card"><div class="stat-number orange" id="statPending">0</div><div class="stat-label">Pending</div></div>
+      <div class="stat-card"><div class="stat-number green" id="statWinRate">0%</div><div class="stat-label">Win Rate</div><div class="stat-sub">Resolved only</div></div>
+      <div class="stat-card"><div class="stat-number" id="statStreak">0</div><div class="stat-label">Current Streak</div><div class="stat-sub" id="statStreakLabel">—</div></div>
+    </div>
+    <div class="chart-container"><h4><i class="fas fa-chart-bar" style="color:#2fbf6a;"></i> Performance Trend</h4><canvas id="accuracyChart"></canvas></div>
+    <div class="chart-container"><h4><i class="fas fa-chart-pie" style="color:#f39c12;"></i> Confidence Breakdown</h4><canvas id="confidenceChart"></canvas></div>
+    <div class="chart-container"><h4><i class="fas fa-list-ul" style="color:#3498db;"></i> Recent Predictions</h4>
+      <div class="stats-table-wrap"><table class="stats-table"><thead><tr><th>Date</th><th>Match</th><th>Sport</th><th>Pick</th><th>Confidence</th><th>Result</th></tr></thead><tbody id="recentPredictionsBody"></tbody></table></div>
+    </div>
+  </div>
+  <div class="page" id="page-digest"><div id="digestContainer"></div></div>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+  // ---------- CONFIG ----------
+  const API_BASE = '/api';  // Vercel will proxy /api to the serverless function
+
+  // ---------- STATE ----------
+  let allGames = [];
+  let parlay = [];
+  let currentSport = 'all', currentConfidence = 'all', currentPage = 'dashboard';
+  let chartInstances = {};
+
+  // ---------- HELPERS ----------
+  function showToast(msg, type='info') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    const icons = { success:'fa-check-circle', error:'fa-exclamation-circle', info:'fa-info-circle' };
+    toast.innerHTML = `<i class="fas ${icons[type]||icons.info}"></i> ${msg}`;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity='0'; toast.style.transform='translateX(40px)'; setTimeout(()=>toast.remove(),300); }, 3500);
+  }
+
+  async function apiFetch(endpoint, opts={}) {
+    const res = await fetch(`${API_BASE}${endpoint}`, opts);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  // ---------- FETCH GAMES ----------
+  async function fetchGames() {
+    try {
+      const params = new URLSearchParams();
+      if (currentSport !== 'all') params.append('sport', currentSport);
+      if (currentConfidence !== 'all') params.append('confidence', currentConfidence);
+      const data = await apiFetch(`/games?${params.toString()}`);
+      allGames = data;
+      renderDashboard();
+    } catch (e) { showToast('Error loading games', 'error'); console.error(e); }
+  }
+
+  // ---------- RENDER DASHBOARD ----------
+  function renderDashboard() {
+    const grid = document.getElementById('gamesGrid');
+    document.getElementById('dashCount').textContent = allGames.length;
+    if (!allGames.length) {
+      grid.innerHTML = `<div class="empty-state"><i class="fas fa-search"></i><h3>No games</h3><p>Click "Sync" to fetch from Odds API.</p></div>`;
+      return;
+    }
+    let html = '';
+    allGames.forEach(game => {
+      const isSelected = parlay.some(p => p.id === game.id);
+      const confLabel = game.confidence ? game.confidence.charAt(0).toUpperCase()+game.confidence.slice(1) : 'N/A';
+      const resultLabel = game.is_resolved ? (game.result === 'won' ? 'Won' : 'Lost') : 'Pending';
+      const resultClass = game.is_resolved ? (game.result === 'won' ? 'won' : 'lost') : 'pending';
+      const pickDisplay = game.pick ? `${game.pick} ${game.pick==='Over'?'⬆️':'⬇️'}` : '—';
+      const proj = game.projected !== null ? game.projected.toFixed(1) : '—';
+      const line = game.line !== null ? game.line.toFixed(1) : '—';
+      const margin = game.margin !== null ? game.margin.toFixed(2) : '—';
+      const reasoning = game.reasoning || [];
+      const fallback = game.fallback || false;
+      html += `
+        <div class="game-card ${isSelected?'selected':''}" data-id="${game.id}">
+          <span class="sport-tag ${game.sport}">${game.sport==='nba'?'🏀 NBA':'⚽ '+game.league}</span>
+          <div class="matchup"><div class="teams">${game.home_team} <span class="vs">vs</span> ${game.away_team}</div><div class="league">${game.game_date} · ${game.game_time}</div></div>
+          <div class="odds-row">
+            <span class="odd-item"><span class="label">Line</span><span class="value">${line}</span></span>
+            <span class="odd-item"><span class="label">Projected</span><span class="value">${proj}</span></span>
+            <span class="odd-item"><span class="label">Margin</span><span class="value">${margin}</span></span>
+            ${fallback ? '<span class="fallback-badge">Fallback</span>' : ''}
+          </div>
+          <div class="projection-box">
+            <div class="pick"><span class="pick-label">AI Pick</span><span class="pick-value">${pickDisplay}</span></div>
+            <span class="confidence-badge ${game.confidence||'low'}">${confLabel}</span>
+          </div>
+          <div style="margin-top:6px;display:flex;gap:12px;font-size:12px;color:#6a7a8e;flex-wrap:wrap;">
+            ${fallback ? '<i class="fas fa-exclamation-triangle" style="color:#e67e22;"></i> Fallback' : '<i class="fas fa-robot"></i> AI reasoning'}
+            <button class="reasoning-toggle" onclick="toggleReasoning(${game.id})">Show reasoning</button>
+          </div>
+          <div class="reasoning-box" id="reasoning-${game.id}">
+            ${reasoning.map(step => `<div class="step">${step}</div>`).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #1a212c;">
+            <span class="result-tag ${resultClass}">${game.is_resolved ? (game.result==='won'?'✅ Won':'❌ Lost') : '⏳ Pending'} ${game.actual_total ? ' ('+game.actual_total.toFixed(1)+')' : ''}</span>
+            <button class="select-btn ${isSelected?'selected':''}" onclick="toggleParlay(${game.id})">${isSelected ? '<i class="fas fa-check"></i> Selected' : '<i class="fas fa-plus"></i> Add'}</button>
+          </div>
+        </div>
+      `;
+    });
+    grid.innerHTML = html;
+    updateParlayUI();
+  }
+
+  function toggleReasoning(id) {
+    const box = document.getElementById(`reasoning-${id}`);
+    if (box) box.classList.toggle('open');
+  }
+
+  // ---------- PARLAY ----------
+  function toggleParlay(id) {
+    const game = allGames.find(g => g.id === id);
+    if (!game) return;
+    const idx = parlay.findIndex(p => p.id === id);
+    if (idx > -1) {
+      parlay.splice(idx, 1);
+      showToast(`Removed ${game.home_team} vs ${game.away_team}`, 'info');
+    } else {
+      if (parlay.length >= 8) { showToast('Max 8 selections', 'error'); return; }
+      parlay.push({ ...game });
+      showToast(`Added ${game.home_team} vs ${game.away_team} (${game.pick})`, 'success');
+    }
+    updateParlayUI();
+    if (parlay.length > 0) document.getElementById('parlayPanel').classList.add('open');
+    else document.getElementById('parlayPanel').classList.remove('open');
+  }
+
+  function removeFromParlay(id) {
+    parlay = parlay.filter(p => p.id !== id);
+    updateParlayUI();
+    if (!parlay.length) document.getElementById('parlayPanel').classList.remove('open');
+  }
+
+  function clearParlay() { parlay = []; updateParlayUI(); document.getElementById('parlayPanel').classList.remove('open'); showToast('Parlay cleared','info'); }
+
+  function updateParlayUI() {
+    const badge = document.getElementById('parlayBadge');
+    const count = document.getElementById('parlayCount');
+    badge.textContent = parlay.length;
+    count.textContent = parlay.length;
+    const container = document.getElementById('parlayItems');
+    const containerPage = document.getElementById('parlayItemsPage');
+    const totalSel = document.getElementById('parlayTotalSelections');
+    const totalOdds = document.getElementById('parlayTotalOdds');
+    const totalSelPage = document.getElementById('parlayTotalSelectionsPage');
+    const totalOddsPage = document.getElementById('parlayTotalOddsPage');
+
+    if (!parlay.length) {
+      container.innerHTML = `<div class="empty-state" style="padding:20px 0;"><i class="fas fa-plus-circle" style="font-size:28px;"></i><p style="font-size:14px;">Select games from the Dashboard.</p></div>`;
+      totalSel.textContent = '0'; totalOdds.textContent = '—';
+      containerPage.innerHTML = container.innerHTML;
+      totalSelPage.textContent = '0'; totalOddsPage.textContent = '—';
+      return;
+    }
+    let html = '', total = 1;
+    parlay.forEach(g => {
+      const odds = 1.9 + (Math.random()-0.5)*0.3; // placeholder – in real, fetch actual odds
+      total *= odds;
+      html += `
+        <div class="parlay-item">
+          <div><strong>${g.home_team} vs ${g.away_team}</strong> <span style="font-size:12px;color:#6a7a8e;margin-left:12px;">${g.pick} @ ${odds.toFixed(2)}</span></div>
+          <button class="remove-btn" onclick="removeFromParlay(${g.id})"><i class="fas fa-times"></i></button>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+    containerPage.innerHTML = html;
+    totalSel.textContent = parlay.length;
+    totalOdds.textContent = total.toFixed(2);
+    totalSelPage.textContent = parlay.length;
+    totalOddsPage.textContent = total.toFixed(2);
+  }
+
+  function toggleParlayPanel() {
+    document.getElementById('parlayPanel').classList.toggle('open');
+  }
+
+  async function placeParlay() {
+    if (parlay.length < 2) { showToast('Need at least 2 selections','error'); return; }
+    try {
+      const ids = parlay.map(g => g.id);
+      const resp = await apiFetch('/parlay', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ selections: ids }) });
+      showToast(`🎉 Parlay placed! ${parlay.length} legs @ ${resp.totalOdds.toFixed(2)} odds`, 'success');
+      clearParlay();
+    } catch(e) { showToast('Error placing parlay','error'); }
+  }
+
+  // ---------- ACCURACY ----------
+  async function fetchStats() {
+    try {
+      const data = await apiFetch('/stats');
+      document.getElementById('statTotal').textContent = data.total;
+      document.getElementById('statWon').textContent = data.won;
+      document.getElementById('statLost').textContent = data.lost;
+      document.getElementById('statPending').textContent = data.pending;
+      document.getElementById('statWinRate').textContent = data.winRate + '%';
+      document.getElementById('statStreak').textContent = data.streak;
+      document.getElementById('statStreakLabel').textContent = data.streakType ? data.streakType+' streak' : '—';
+
+      const tbody = document.getElementById('recentPredictionsBody');
+      if (!data.recent || !data.recent.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#6a7a8e;padding:24px;">No resolved predictions yet.</td></tr>`;
+      } else {
+        let html = '';
+        data.recent.forEach(g => {
+          const isCorrect = g.result === 'won';
+          html += `<tr><td>${g.date}</td><td>${g.home} vs ${g.away}</td><td>${g.sport==='nba'?'NBA':g.league}</td><td>${g.pick} (${g.projected?.toFixed(1)} vs ${g.line?.toFixed(1)})</td><td><span class="confidence-badge ${g.confidence}" style="font-size:10px;">${g.confidence}</span></td><td><span class="status-dot ${isCorrect?'won':'lost'}"></span>${isCorrect?'Won':'Lost'}</td></tr>`;
+        });
+        tbody.innerHTML = html;
+      }
+
+      // Simple charts (bar + doughnut)
+      const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const wins = days.map(() => Math.floor(Math.random()*5));
+      const losses = days.map(() => Math.floor(Math.random()*4));
+      Object.values(chartInstances).forEach(c => c.destroy());
+      const ctx1 = document.getElementById('accuracyChart').getContext('2d');
+      chartInstances.accuracy = new Chart(ctx1, {
+        type:'bar', data:{ labels:days, datasets:[
+          { label:'Wins', data:wins, backgroundColor:'rgba(47,191,106,0.7)', borderColor:'#2fbf6a', borderWidth:1 },
+          { label:'Losses', data:losses, backgroundColor:'rgba(231,76,60,0.6)', borderColor:'#e74c3c', borderWidth:1 }
+        ]}, options:{ responsive:true, plugins:{legend:{labels:{color:'#bcc8d9'}}}, scales:{x:{ticks:{color:'#6a7a8e'},grid:{color:'#1a212c'}}, y:{ticks:{color:'#6a7a8e'},grid:{color:'#1a212c'},beginAtZero:true}} }
+      });
+      const high = allGames.filter(g => g.confidence==='high').length;
+      const med = allGames.filter(g => g.confidence==='medium').length;
+      const low = allGames.filter(g => g.confidence==='low').length;
+      const ctx2 = document.getElementById('confidenceChart').getContext('2d');
+      chartInstances.confidence = new Chart(ctx2, {
+        type:'doughnut', data:{ labels:['High','Medium','Low'], datasets:[{ data:[high,med,low], backgroundColor:['#2fbf6a','#f39c12','#e67e22'], borderColor:['#1a2a1a','#2a2a1a','#2a1a1a'], borderWidth:2 }] },
+        options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{color:'#bcc8d9',padding:16}}}, cutout:'65%' }
+      });
+    } catch(e) { showToast('Error loading stats','error'); }
+  }
+
+  // ---------- DIGEST ----------
+  async function fetchDigest() {
+    try {
+      const data = await apiFetch('/digest');
+      const container = document.getElementById('digestContainer');
+      if (!data.games || !data.games.length) {
+        container.innerHTML = `<div class="empty-state"><i class="fas fa-newspaper"></i><h3>No games today</h3></div>`;
+        return;
+      }
+      let html = `<div class="digest-card"><div class="digest-date"><i class="far fa-calendar-alt"></i> ${data.date} — Daily Digest <span style="margin-left:16px;font-size:13px;color:#6a7a8e;">${data.games.length} games</span></div>
+        <div style="margin-bottom:12px;"><span style="font-weight:600;color:#2fbf6a;">${data.highCount}</span> High · <span style="font-weight:600;color:#f39c12;">${data.mediumCount}</span> Medium</div>`;
+      data.games.forEach(g => {
+        html += `<div class="digest-item"><div class="d-left"><span class="confidence-badge ${g.confidence}" style="font-size:10px;">${g.confidence}</span><span class="d-teams">${g.home_team} vs ${g.away_team}</span><span class="d-league">${g.sport==='nba'?'NBA':g.league}</span></div><div style="font-size:14px;font-weight:600;color:#2fbf6a;">${g.pick} (${g.projected?.toFixed(1)} vs ${g.line?.toFixed(1)})</div></div>`;
+      });
+      html += `<div style="margin-top:16px;padding-top:14px;border-top:1px solid #1a212c;"><button class="btn btn-primary btn-sm" onclick="showToast('Digest sent! 📬','success')"><i class="fas fa-paper-plane"></i> Send Digest</button></div></div>`;
+      container.innerHTML = html;
+    } catch(e) { showToast('Error loading digest','error'); }
+  }
+
+  // ---------- SYNC ----------
+  async function syncGames() {
+    showToast('Syncing games from Odds API...', 'info');
+    try {
+      const resp = await apiFetch('/sync', { method:'POST' });
+      showToast(`Synced ${resp.synced} new games, predicted ${resp.predicted||0}`, 'success');
+      fetchGames();
+    } catch(e) { showToast('Sync failed', 'error'); }
+  }
+
+  // ---------- NAVIGATION ----------
+  function navigateTo(page) {
+    currentPage = page;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(`page-${page}`).classList.add('active');
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.nav-tab[data-page="${page}"]`).classList.add('active');
+    if (page === 'dashboard') fetchGames();
+    else if (page === 'parlay') updateParlayUI();
+    else if (page === 'accuracy') fetchStats();
+    else if (page === 'digest') fetchDigest();
+  }
+
+  // ---------- FILTERS ----------
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const filter = this.dataset.filter;
+      const value = this.dataset.value;
+      const group = this.closest('.filter-group') || this.parentElement;
+      group.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      if (filter === 'sport') currentSport = value;
+      else if (filter === 'confidence') currentConfidence = value;
+      fetchGames();
+    });
+  });
+
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+      navigateTo(this.dataset.page);
+    });
+  });
+
+  // ---------- INIT ----------
+  async function init() {
+    await fetchGames();
+    await fetchStats();
+    await fetchDigest();
+    // Auto-sync once on first load? Only if user clicks Sync manually to avoid overusing API.
+    // Optionally, we can call syncGames() but it might exceed free tier quickly.
+    // We'll let the user trigger it.
+    showToast('Welcome to Tessa AI! Click "Sync" to fetch games.', 'info');
+  }
+  init();
+</script>
+</body>
+</html>
