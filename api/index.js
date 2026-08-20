@@ -1,4 +1,4 @@
-// api/index.js
+// api/index.js – now uses Groq
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
@@ -26,14 +26,14 @@ async function fetchOdds(sportKey) {
   }
 }
 
-// Helper: call AgentRouter (OpenAI-compatible)
+// Helper: call Groq (OpenAI-compatible)
 async function callAI(prompt) {
-  const apiKey = process.env.AGENTROUTER_API_KEY;
-  const model = process.env.AGENTROUTER_MODEL || 'gpt-4o-mini';
-  const baseURL = process.env.AGENTROUTER_BASE_URL || 'https://api.agentrouter.org/v1';
+  const apiKey = process.env.GROQ_API_KEY;
+  const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+  const baseURL = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
   const url = `${baseURL}/chat/completions`;
 
-  console.log(`📤 Sending request to AgentRouter: ${url}, model: ${model}`);
+  console.log(`📤 Sending request to Groq: ${url}, model: ${model}`);
   try {
     const resp = await axios.post(url, {
       model,
@@ -49,10 +49,10 @@ async function callAI(prompt) {
         'Content-Type': 'application/json'
       }
     });
-    console.log(`✅ AgentRouter response received`);
+    console.log(`✅ Groq response received`);
     return resp.data.choices[0].message.content;
   } catch (e) {
-    console.error('❌ AgentRouter error:', e.response?.data || e.message);
+    console.error('❌ Groq error:', e.response?.data || e.message);
     return null;
   }
 }
