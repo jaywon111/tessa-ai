@@ -33,6 +33,7 @@ async function callAI(prompt) {
   const baseURL = process.env.AGENTROUTER_BASE_URL || 'https://api.agentrouter.org/v1';
   const url = `${baseURL}/chat/completions`;
 
+  console.log(`📤 Sending request to AgentRouter: ${url}, model: ${model}`);
   try {
     const resp = await axios.post(url, {
       model,
@@ -48,9 +49,10 @@ async function callAI(prompt) {
         'Content-Type': 'application/json'
       }
     });
+    console.log(`✅ AgentRouter response received`);
     return resp.data.choices[0].message.content;
   } catch (e) {
-    console.error('AI error:', e.response?.data || e.message);
+    console.error('❌ AgentRouter error:', e.response?.data || e.message);
     return null;
   }
 }
@@ -68,9 +70,10 @@ Pick: Over/Under
 Confidence: High/Medium/Low
 Reasoning: <brief step-by-step>
 `;
+  console.log(`🧠 Generating prediction for ${game.home_team} vs ${game.away_team}`);
   const aiResponse = await callAI(prompt);
   if (!aiResponse) {
-    // Fallback: use statistical average
+    console.log(`⚠️ AI failed, using fallback for ${game.home_team} vs ${game.away_team}`);
     const proj = game.line + (Math.random() - 0.5) * 2;
     return {
       projected: Math.round(proj * 10) / 10,
@@ -102,6 +105,7 @@ Reasoning: <brief step-by-step>
   }
   if (projected === null) projected = game.line + (Math.random() - 0.5) * 2;
   if (!pick) pick = projected > game.line ? 'Over' : 'Under';
+  console.log(`✅ Prediction: ${pick} @ ${projected} (${confidence}) for ${game.home_team} vs ${game.away_team}`);
   return {
     projected: Math.round(projected * 10) / 10,
     pick,
@@ -224,6 +228,7 @@ app.post('/api/sync', async (req, res) => {
 
   console.log('🤖 Generating predictions...');
   const { data: toPredict, error: predError } = await supabase.from('games').select('*').is('projected', null).eq('is_resolved', false);
+  console.log(`📊 Found ${toPredict?.length || 0} games to predict`);
   let predicted = 0;
   if (predError) {
     console.error('❌ Prediction fetch error:', predError);
@@ -246,6 +251,8 @@ app.post('/api/sync', async (req, res) => {
           console.log(`  ✅ Predicted ${game.home_team} vs ${game.away_team}: ${pred.pick} @ ${pred.projected}`);
           predicted++;
         }
+      } else {
+        console.error(`  ❌ No prediction returned for ${game.home_team} vs ${game.away_team}`);
       }
     }
   }
