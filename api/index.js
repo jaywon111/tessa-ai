@@ -108,7 +108,16 @@ app.get('/api/games', async (req, res) => {
 app.post('/api/sync', async (req, res) => {
   console.log('🔄 Sync started');
   
-  const sports = ['basketball_nba', 'soccer_epl', 'soccer_la_liga', 'soccer_serie_a', 'soccer_bundesliga', 'soccer_ligue_one'];
+  // ✅ CORRECTED SPORT KEYS (from your API list)
+  const sports = [
+    'basketball_nba',
+    'soccer_epl',
+    'soccer_spain_la_liga',
+    'soccer_italy_serie_a',
+    'soccer_germany_bundesliga',
+    'soccer_france_ligue_one'
+  ];
+  
   let inserted = 0, failed = 0, errors = [];
   const allEvents = [];
 
@@ -121,7 +130,14 @@ app.post('/api/sync', async (req, res) => {
       const startTime = new Date(event.commence_time);
       const line = event.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes?.[0]?.point || null;
       if (!line) continue;
-      const leagueMap = { soccer_epl:'EPL', soccer_la_liga:'La Liga', soccer_serie_a:'Serie A', soccer_bundesliga:'Bundesliga', soccer_ligue_one:'Ligue 1' };
+      // Map sport key to our internal league name
+      const leagueMap = {
+        soccer_epl: 'EPL',
+        soccer_spain_la_liga: 'La Liga',
+        soccer_italy_serie_a: 'Serie A',
+        soccer_germany_bundesliga: 'Bundesliga',
+        soccer_france_ligue_one: 'Ligue 1'
+      };
       const league = leagueMap[sport] || sport;
       allEvents.push({
         api_id: event.id,
