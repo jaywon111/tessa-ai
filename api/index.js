@@ -26,11 +26,13 @@ async function fetchOdds(sportKey) {
   }
 }
 
-// Helper: call DeepSeek
-async function callDeepSeek(prompt) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-  const url = 'https://api.deepseek.com/v1/chat/completions';
+// Helper: call AgentRouter (OpenAI-compatible)
+async function callAI(prompt) {
+  const apiKey = process.env.AGENTROUTER_API_KEY;
+  const model = process.env.AGENTROUTER_MODEL || 'gpt-4o-mini';
+  const baseURL = process.env.AGENTROUTER_BASE_URL || 'https://api.agentrouter.org/v1';
+  const url = `${baseURL}/chat/completions`;
+
   try {
     const resp = await axios.post(url, {
       model,
@@ -40,10 +42,15 @@ async function callDeepSeek(prompt) {
       ],
       temperature: 0.3,
       max_tokens: 500,
-    }, { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+    }, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
     return resp.data.choices[0].message.content;
   } catch (e) {
-    console.error('DeepSeek error:', e.response?.data || e.message);
+    console.error('AI error:', e.response?.data || e.message);
     return null;
   }
 }
@@ -61,12 +68,19 @@ Pick: Over/Under
 Confidence: High/Medium/Low
 Reasoning: <brief step-by-step>
 `;
-  const aiResponse = await callDeepSeek(prompt);
+  const aiResponse = await callAI(prompt);
   if (!aiResponse) {
+    // Fallback: use statistical average
     const proj = game.line + (Math.random() - 0.5) * 2;
-    return { projected: Math.round(proj*10)/10, pick: proj > game.line ? 'Over' : 'Under',
-             confidence: 'low', reasoning: ['⚠️ AI fallback – using statistical average'], fallback: true };
+    return {
+      projected: Math.round(proj * 10) / 10,
+      pick: proj > game.line ? 'Over' : 'Under',
+      confidence: 'low',
+      reasoning: ['⚠️ AI fallback – using statistical average'],
+      fallback: true
+    };
   }
+  // Parse AI response
   const lines = aiResponse.split('\n').map(l => l.trim());
   let projected = null, pick = null, confidence = 'low', reasoning = [];
   for (const line of lines) {
@@ -88,7 +102,13 @@ Reasoning: <brief step-by-step>
   }
   if (projected === null) projected = game.line + (Math.random() - 0.5) * 2;
   if (!pick) pick = projected > game.line ? 'Over' : 'Under';
-  return { projected: Math.round(projected*10)/10, pick, confidence, reasoning, fallback: false };
+  return {
+    projected: Math.round(projected * 10) / 10,
+    pick,
+    confidence,
+    reasoning,
+    fallback: false
+  };
 }
 
 // ---- Routes ----
@@ -108,7 +128,6 @@ app.get('/api/games', async (req, res) => {
 app.post('/api/sync', async (req, res) => {
   console.log('🔄 Sync started');
   
-  // ✅ CORRECTED SPORT KEYS (from your API list)
   const sports = [
     'basketball_nba',
     'soccer_epl',
@@ -121,7 +140,6 @@ app.post('/api/sync', async (req, res) => {
   let inserted = 0, failed = 0, errors = [];
   const allEvents = [];
 
-  // Step 1: Fetch all events
   console.log('📡 Fetching events from Odds API...');
   for (const sport of sports) {
     const events = await fetchOdds(sport);
@@ -130,7 +148,6 @@ app.post('/api/sync', async (req, res) => {
       const startTime = new Date(event.commence_time);
       const line = event.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes?.[0]?.point || null;
       if (!line) continue;
-      // Map sport key to our internal league name
       const leagueMap = {
         soccer_epl: 'EPL',
         soccer_spain_la_liga: 'La Liga',
@@ -153,10 +170,8 @@ app.post('/api/sync', async (req, res) => {
   }
   console.log(`📊 Total events fetched: ${allEvents.length}`);
 
-  // Step 2: Insert each event with detailed error capture
   console.log('💾 Inserting into Supabase...');
   for (const game of allEvents) {
-    // Check if already exists
     const { data: existing, error: checkError } = await supabase.from('games').select('id').eq('api_id', game.api_id);
     if (checkError) {
       console.error('❌ Check error:', checkError);
@@ -207,7 +222,6 @@ app.post('/api/sync', async (req, res) => {
     }
   }
 
-  // Step 3: Predict for games without projection
   console.log('🤖 Generating predictions...');
   const { data: toPredict, error: predError } = await supabase.from('games').select('*').is('projected', null).eq('is_resolved', false);
   let predicted = 0;
