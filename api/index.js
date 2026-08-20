@@ -26,7 +26,7 @@ async function fetchOdds(sportKey) {
   }
 }
 
-// Helper: call DeepSeek (with better error handling)
+// Helper: call DeepSeek
 async function callDeepSeek(prompt) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
@@ -106,13 +106,17 @@ app.get('/api/games', async (req, res) => {
 });
 
 app.post('/api/sync', async (req, res) => {
+  console.log('🔄 Sync started');
+  
   const sports = ['basketball_nba', 'soccer_epl', 'soccer_la_liga', 'soccer_serie_a', 'soccer_bundesliga', 'soccer_ligue_one'];
   let inserted = 0, failed = 0, errors = [];
   const allEvents = [];
 
   // Step 1: Fetch all events
+  console.log('📡 Fetching events from Odds API...');
   for (const sport of sports) {
     const events = await fetchOdds(sport);
+    console.log(`  ${sport}: ${events.length} events`);
     for (const event of events) {
       const startTime = new Date(event.commence_time);
       const line = event.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes?.[0]?.point || null;
@@ -131,13 +135,25 @@ app.post('/api/sync', async (req, res) => {
       });
     }
   }
+  console.log(`📊 Total events fetched: ${allEvents.length}`);
 
   // Step 2: Insert each event with detailed error capture
+  console.log('💾 Inserting into Supabase...');
   for (const game of allEvents) {
     // Check if already exists
-    const { data: existing } = await supabase.from('games').select('id').eq('api_id', game.api_id);
-    if (existing && existing.length > 0) continue;
+    const { data: existing, error: checkError } = await supabase.from('games').select('id').eq('api_id', game.api_id);
+    if (checkError) {
+      console.error('❌ Check error:', checkError);
+      errors.push({ game: game.home_team + ' vs ' + game.away_team, error: 'Check failed: ' + checkError.message });
+      failed++;
+      continue;
+    }
+    if (existing && existing.length > 0) {
+      console.log(`  ⏭️ Skipping ${game.home_team} vs ${game.away_team} (already exists)`);
+      continue;
+    }
 
+    console.log(`  ➕ Inserting ${game.home_team} vs ${game.away_team}...`);
     const { error } = await supabase.from('games').insert([{
       api_id: game.api_id,
       sport: game.sport,
@@ -161,18 +177,29 @@ app.post('/api/sync', async (req, res) => {
     }]);
 
     if (error) {
+      console.error(`  ❌ Insert failed:`, error);
       failed++;
-      errors.push({ game: game.home_team + ' vs ' + game.away_team, error: error.message });
+      errors.push({ 
+        game: game.home_team + ' vs ' + game.away_team, 
+        error: error.message,
+        details: error.details || '',
+        hint: error.hint || ''
+      });
     } else {
+      console.log(`  ✅ Inserted ${game.home_team} vs ${game.away_team}`);
       inserted++;
     }
   }
 
   // Step 3: Predict for games without projection
+  console.log('🤖 Generating predictions...');
   const { data: toPredict, error: predError } = await supabase.from('games').select('*').is('projected', null).eq('is_resolved', false);
   let predicted = 0;
-  if (!predError) {
+  if (predError) {
+    console.error('❌ Prediction fetch error:', predError);
+  } else {
     for (const game of toPredict || []) {
+      console.log(`  🧠 Predicting ${game.home_team} vs ${game.away_team}...`);
       const pred = await generatePrediction(game);
       if (pred) {
         const { error: updateError } = await supabase.from('games').update({
@@ -183,17 +210,24 @@ app.post('/api/sync', async (req, res) => {
           reasoning: pred.reasoning,
           fallback: pred.fallback || false,
         }).eq('id', game.id);
-        if (!updateError) predicted++;
+        if (updateError) {
+          console.error(`  ❌ Update failed:`, updateError);
+        } else {
+          console.log(`  ✅ Predicted ${game.home_team} vs ${game.away_team}: ${pred.pick} @ ${pred.projected}`);
+          predicted++;
+        }
       }
     }
   }
 
+  console.log(`✅ Sync complete: ${inserted} inserted, ${failed} failed, ${predicted} predicted`);
+  
   res.json({
     synced: allEvents.length,
     inserted,
     failed,
     predicted,
-    errors: errors.slice(0, 10), // first 10 errors for debugging
+    errors: errors.slice(0, 20),
     predError: predError?.message || null,
   });
 });
