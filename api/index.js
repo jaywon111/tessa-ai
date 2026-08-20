@@ -20,10 +20,13 @@ async function fetchOdds(sportKey) {
   try {
     const resp = await axios.get(url, { params });
     return resp.data;
-  } catch (e) { console.error(e); return []; }
+  } catch (e) {
+    console.error('Odds API error:', e.response?.data || e.message);
+    return [];
+  }
 }
 
-// Helper: call DeepSeek
+// Helper: call DeepSeek (with better error handling)
 async function callDeepSeek(prompt) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
@@ -39,7 +42,10 @@ async function callDeepSeek(prompt) {
       max_tokens: 500,
     }, { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
     return resp.data.choices[0].message.content;
-  } catch (e) { console.error(e); return null; }
+  } catch (e) {
+    console.error('DeepSeek error:', e.response?.data || e.message);
+    return null;
+  }
 }
 
 // Generate prediction for a game
@@ -57,12 +63,10 @@ Reasoning: <brief step-by-step>
 `;
   const aiResponse = await callDeepSeek(prompt);
   if (!aiResponse) {
-    // fallback
     const proj = game.line + (Math.random() - 0.5) * 2;
     return { projected: Math.round(proj*10)/10, pick: proj > game.line ? 'Over' : 'Under',
              confidence: 'low', reasoning: ['⚠️ AI fallback – using statistical average'], fallback: true };
   }
-  // parse AI response
   const lines = aiResponse.split('\n').map(l => l.trim());
   let projected = null, pick = null, confidence = 'low', reasoning = [];
   for (const line of lines) {
@@ -103,18 +107,19 @@ app.get('/api/games', async (req, res) => {
 
 app.post('/api/sync', async (req, res) => {
   const sports = ['basketball_nba', 'soccer_epl', 'soccer_la_liga', 'soccer_serie_a', 'soccer_bundesliga', 'soccer_ligue_one'];
-  let count = 0;
+  let inserted = 0, failed = 0, errors = [];
+  const allEvents = [];
+
+  // Step 1: Fetch all events
   for (const sport of sports) {
     const events = await fetchOdds(sport);
     for (const event of events) {
-      const { data: existing } = await supabase.from('games').select('id').eq('api_id', event.id);
-      if (existing && existing.length > 0) continue;
       const startTime = new Date(event.commence_time);
       const line = event.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes?.[0]?.point || null;
       if (!line) continue;
       const leagueMap = { soccer_epl:'EPL', soccer_la_liga:'La Liga', soccer_serie_a:'Serie A', soccer_bundesliga:'Bundesliga', soccer_ligue_one:'Ligue 1' };
       const league = leagueMap[sport] || sport;
-      const game = {
+      allEvents.push({
         api_id: event.id,
         sport: sport === 'basketball_nba' ? 'nba' : 'football',
         league,
@@ -123,51 +128,85 @@ app.post('/api/sync', async (req, res) => {
         game_date: startTime.toISOString().slice(0,10),
         game_time: startTime.toTimeString().slice(0,5),
         line,
-        projected: null,
-        pick: null,
-        confidence: null,
-        margin: null,
-        reasoning: null,
-        factors: null,
-        fallback: false,
-        result: 'pending',
-        is_resolved: false,
-        actual_total: null,
-        odds_data: null,
-      };
-      await supabase.from('games').insert(game);
-      count++;
+      });
     }
   }
-  // Now predict for all without projection
-  const { data: toPredict } = await supabase.from('games').select('*').is('projected', null).eq('is_resolved', false);
+
+  // Step 2: Insert each event with detailed error capture
+  for (const game of allEvents) {
+    // Check if already exists
+    const { data: existing } = await supabase.from('games').select('id').eq('api_id', game.api_id);
+    if (existing && existing.length > 0) continue;
+
+    const { error } = await supabase.from('games').insert([{
+      api_id: game.api_id,
+      sport: game.sport,
+      league: game.league,
+      home_team: game.home_team,
+      away_team: game.away_team,
+      game_date: game.game_date,
+      game_time: game.game_time,
+      line: game.line,
+      projected: null,
+      pick: null,
+      confidence: null,
+      margin: null,
+      reasoning: null,
+      factors: null,
+      fallback: false,
+      result: 'pending',
+      is_resolved: false,
+      actual_total: null,
+      odds_data: null,
+    }]);
+
+    if (error) {
+      failed++;
+      errors.push({ game: game.home_team + ' vs ' + game.away_team, error: error.message });
+    } else {
+      inserted++;
+    }
+  }
+
+  // Step 3: Predict for games without projection
+  const { data: toPredict, error: predError } = await supabase.from('games').select('*').is('projected', null).eq('is_resolved', false);
   let predicted = 0;
-  for (const game of toPredict) {
-    const pred = await generatePrediction(game);
-    if (pred) {
-      await supabase.from('games').update({
-        projected: pred.projected,
-        pick: pred.pick,
-        confidence: pred.confidence,
-        margin: Math.abs(pred.projected - game.line),
-        reasoning: pred.reasoning,
-        fallback: pred.fallback || false,
-      }).eq('id', game.id);
-      predicted++;
+  if (!predError) {
+    for (const game of toPredict || []) {
+      const pred = await generatePrediction(game);
+      if (pred) {
+        const { error: updateError } = await supabase.from('games').update({
+          projected: pred.projected,
+          pick: pred.pick,
+          confidence: pred.confidence,
+          margin: Math.abs(pred.projected - game.line),
+          reasoning: pred.reasoning,
+          fallback: pred.fallback || false,
+        }).eq('id', game.id);
+        if (!updateError) predicted++;
+      }
     }
   }
-  res.json({ synced: count, predicted });
+
+  res.json({
+    synced: allEvents.length,
+    inserted,
+    failed,
+    predicted,
+    errors: errors.slice(0, 10), // first 10 errors for debugging
+    predError: predError?.message || null,
+  });
 });
 
 app.get('/api/stats', async (req, res) => {
   const { data: resolved } = await supabase.from('games').select('*').eq('is_resolved', true);
-  const total = resolved.length;
-  const won = resolved.filter(g => g.result === 'won').length;
-  const lost = resolved.filter(g => g.result === 'lost').length;
+  const total = resolved?.length || 0;
+  const won = resolved?.filter(g => g.result === 'won').length || 0;
+  const lost = resolved?.filter(g => g.result === 'lost').length || 0;
   const { data: pendingData } = await supabase.from('games').select('id').eq('is_resolved', false);
-  const pending = pendingData.length;
+  const pending = pendingData?.length || 0;
   const winRate = total > 0 ? Math.round((won/total)*100) : 0;
-  const sorted = resolved.sort((a,b) => a.game_date.localeCompare(b.game_date) || a.game_time.localeCompare(b.game_time));
+  const sorted = resolved?.sort((a,b) => a.game_date.localeCompare(b.game_date) || a.game_time.localeCompare(b.game_time)) || [];
   let streak = 0, streakType = '';
   if (sorted.length > 0) {
     const last = sorted[sorted.length-1];
@@ -185,7 +224,7 @@ app.get('/api/stats', async (req, res) => {
       }
     }
   }
-  const recent = resolved.sort((a,b) => b.game_date.localeCompare(a.game_date) || b.game_time.localeCompare(a.game_time)).slice(0,15);
+  const recent = resolved?.sort((a,b) => b.game_date.localeCompare(a.game_date) || b.game_time.localeCompare(a.game_time)).slice(0,15) || [];
   res.json({ total, won, lost, pending, winRate, streak, streakType, recent });
 });
 
@@ -198,11 +237,10 @@ app.get('/api/digest', async (req, res) => {
 });
 
 app.post('/api/update-results', async (req, res) => {
-  // Simulate updating results (in prod, fetch scores from Odds scores endpoint)
   const today = new Date().toISOString().slice(0,10);
   const { data } = await supabase.from('games').select('*').eq('is_resolved', false).lt('game_date', today);
   let updated = 0;
-  for (const game of data) {
+  for (const game of data || []) {
     const actualTotal = game.line + (Math.random() - 0.5) * (game.sport === 'nba' ? 20 : 1.2);
     const actualOver = actualTotal > game.line;
     const isCorrect = (actualOver && game.pick === 'Over') || (!actualOver && game.pick === 'Under');
