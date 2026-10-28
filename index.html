@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="background-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Tessa">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <title>Tessa AI | Sports Predictions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Mobile-first tweaks. Base styles = phone; md (768px+) = desktop layout. */
+        html, body { max-width: 100%; overflow-x: hidden; }
+        body { -webkit-text-size-adjust: 100%; }
+        .touch { min-height: 44px; }                      /* thumb-sized tap target */
+        .tab-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        #toast-container { position: fixed; bottom: 84px; left: 12px; right: 12px; z-index: 60; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+        @media (min-width: 768px) { #toast-container { bottom: 20px; left: auto; right: 20px; align-items: stretch; } }
+        .toast { max-width: 100%; }
+        .toast { padding: 12px 20px; border-radius: 8px; color: white; opacity: 0; transform: translateY(20px); transition: all 0.3s ease; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background-color: #10b981; }
+        .toast.error { background-color: #ef4444; }
+        .toast.info { background-color: #3b82f6; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased h-[100dvh] flex overflow-hidden">
+
+    <!-- Sidebar / Nav -->
+    <aside class="w-64 bg-slate-900 text-white flex flex-col hidden md:flex">
+        <div class="p-6 flex items-center gap-3 border-b border-slate-800">
+            <div class="bg-blue-500 p-2 rounded-lg"><i data-lucide="brain-circuit" class="w-6 h-6"></i></div>
+            <h1 class="text-xl font-bold tracking-tight">Tessa AI</h1>
+        </div>
+        <nav class="flex-1 p-4 space-y-2">
+            <a href="#" onclick="switchTab('dashboard')" class="flex items-center gap-3 px-4 py-3 bg-blue-600 rounded-lg text-sm font-medium transition-colors tab-link" id="tab-dashboard">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Predictions
+            </a>
+            <a href="#" onclick="switchTab('accuracy')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-800 rounded-lg text-sm font-medium transition-colors text-slate-300 tab-link" id="tab-accuracy">
+                <i data-lucide="pie-chart" class="w-4 h-4"></i> Accuracy Dashboard
+            </a>
+            <a href="#" onclick="switchTab('digest')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-800 rounded-lg text-sm font-medium transition-colors text-slate-300 tab-link" id="tab-digest">
+                <i data-lucide="file-text" class="w-4 h-4"></i> Daily Digest
+            </a>
+        </nav>
+        <div class="p-4 border-t border-slate-800">
+            <div class="bg-slate-800 rounded-lg p-4 text-xs text-slate-400">
+                <p class="mb-2 text-slate-300 font-semibold">API Limits</p>
+                <div class="flex justify-between mb-1"><span>Odds API:</span> <span>Free Tier</span></div>
+                <div class="flex justify-between"><span>OpenRouter:</span> <span>Free Tier</span></div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden relative">
+        <!-- Header -->
+        <header class="bg-white border-b border-slate-200 px-4 md:px-6 py-3 md:py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 sticky top-0 z-10">
+            <div class="flex items-center gap-3 md:gap-4 min-w-0">
+                <span class="md:hidden bg-blue-500 p-1.5 rounded-lg text-white"><i data-lucide="brain-circuit" class="w-5 h-5"></i></span>
+                <h2 class="text-lg md:text-xl font-semibold truncate" id="page-title">Game Predictions</h2>
+            </div>
+            <div class="grid grid-cols-2 md:flex md:items-center gap-2 md:gap-3">
+                <button onclick="updateResults()" id="btn-update" class="touch px-3 md:px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition flex items-center justify-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> <span>Update Results</span>
+                </button>
+                <button onclick="syncGames()" id="btn-sync" class="touch px-3 md:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2 shadow-sm shadow-blue-200">
+                    <i data-lucide="zap" class="w-4 h-4"></i> <span>Sync & Predict</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Scrollable Content -->
+        <div class="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-24 md:pb-6 bg-slate-50" id="main-scroll-area">
+            
+            <!-- VIEW: DASHBOARD (Predictions) -->
+            <div id="view-dashboard" class="view-section">
+                <!-- Filters -->
+                <div class="flex flex-col md:flex-row md:flex-wrap gap-3 md:gap-4 mb-5 md:mb-6 md:items-center md:justify-between bg-white p-3 md:p-4 rounded-xl shadow-sm border border-slate-100">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 md:flex gap-2">
+                        <select id="filter-sport" class="touch w-full md:w-auto bg-slate-50 border border-slate-200 text-sm rounded-lg px-3 py-2.5 outline-none focus:border-blue-500" onchange="renderGames()">
+                            <option value="all">All Sports</option>
+                            <option value="basketball_nba">NBA</option>
+                            <option value="football">Football (Soccer)</option>
+                        </select>
+                        <select id="filter-confidence" class="touch w-full md:w-auto bg-slate-50 border border-slate-200 text-sm rounded-lg px-3 py-2.5 outline-none focus:border-blue-500" onchange="renderGames()">
+                            <option value="all">All Confidence</option>
+                            <option value="high">High Confidence</option>
+                            <option value="medium">Medium Confidence</option>
+                            <option value="low">Low Confidence</option>
+                        </select>
+                        <select id="filter-line" class="touch w-full md:w-auto bg-slate-50 border border-slate-200 text-sm rounded-lg px-3 py-2.5 outline-none focus:border-blue-500" onchange="renderGames()">
+                            <option value="all">All Lines</option>
+                            <option value="1.5">O/U 1.5</option>
+                            <option value="2.5">O/U 2.5</option>
+                            <option value="3.5">O/U 3.5</option>
+                        </select>
+                    </div>
+                    <button onclick="toggleParlay()" class="touch flex items-center justify-center gap-2 text-sm font-medium text-blue-600 bg-blue-50 px-4 py-2.5 rounded-lg w-full md:w-auto">
+                        <i data-lucide="ticket" class="w-4 h-4"></i> Parlay Builder (<span id="parlay-count">0</span>)
+                    </button>
+                </div>
+
+                <!-- Games Grid -->
+                <div id="games-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+                    <!-- Cards rendered by JS -->
+                </div>
+                
+                <!-- Settled (graded won/lost) matches live here, off the home grid -->
+                <div class="mt-6 md:mt-10">
+                    <button onclick="toggleSettled()" id="settled-toggle" class="touch w-full flex items-center justify-between gap-3 bg-white px-4 py-3 md:p-4 rounded-xl shadow-sm border border-slate-100 text-slate-700 font-semibold">
+                        <span>Settled results (<span id="settled-count">0</span>)</span>
+                        <span id="settled-arrow" class="text-blue-600 text-sm px-3 py-1.5 rounded-lg bg-blue-50">Show</span>
+                    </button>
+                    <div id="settled-container" class="hidden grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 mt-4 md:mt-6"></div>
+                </div>
+                <div id="empty-state" class="hidden flex flex-col items-center justify-center py-20 text-slate-400">
+                    <i data-lucide="inbox" class="w-16 h-16 mb-4 text-slate-300"></i>
+                    <p class="text-lg font-medium text-slate-600">No games found</p>
+                    <p class="text-sm">Click "Sync & Predict" to fetch the latest matches.</p>
+                </div>
+            </div>
+
+            <!-- VIEW: ACCURACY DASHBOARD -->
+            <div id="view-accuracy" class="view-section hidden">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
+                    <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100">
+                        <p class="text-xs md:text-sm text-slate-500 font-medium mb-1">Total Predictions</p>
+                        <h3 class="text-2xl md:text-3xl font-bold" id="stat-total">-</h3>
+                    </div>
+                    <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100">
+                        <p class="text-xs md:text-sm text-slate-500 font-medium mb-1">Win Rate</p>
+                        <h3 class="text-2xl md:text-3xl font-bold text-blue-600" id="stat-winrate">-</h3>
+                    </div>
+                    <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100">
+                        <p class="text-xs md:text-sm text-slate-500 font-medium mb-1">Record (W-L)</p>
+                        <h3 class="text-2xl md:text-3xl font-bold" id="stat-record">-</h3>
+                    </div>
+                    <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100">
+                        <p class="text-xs md:text-sm text-slate-500 font-medium mb-1">Current Streak</p>
+                        <h3 class="text-2xl md:text-3xl font-bold text-orange-500" id="stat-streak">-</h3>
+                    </div>
+                </div>
+                <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100 mb-6 md:mb-8">
+                    <h3 class="font-semibold mb-4 text-slate-700">Accuracy by Line</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-6" id="line-stats"></div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                    <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100">
+                        <h3 class="font-semibold mb-4 text-slate-700">Win Rate by Confidence</h3>
+                        <div class="relative h-56 md:h-64"><canvas id="confidenceChart"></canvas></div>
+                    </div>
+                    <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100">
+                        <h3 class="font-semibold text-slate-700 flex items-center justify-between cursor-pointer select-none" onclick="toggleRecent()">
+                        <span class="flex items-center gap-2">Recent Results <span id="recent-count" class="text-xs font-normal text-slate-400"></span></span>
+                        <i data-lucide="chevron-down" id="recent-chevron" class="w-5 h-5 text-slate-400 transition-transform duration-200"></i>
+                    </h3>
+                        <div id="recent-results-body" class="hidden">
+                        <div id="recent-results-cards" class="md:hidden space-y-2"></div>
+                        <div class="hidden md:block overflow-x-auto">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-slate-500 uppercase bg-slate-50">
+                                    <tr>
+                                        <th class="px-4 py-3 rounded-tl-lg">Match</th>
+                                        <th class="px-4 py-3">Pick</th>
+                                        <th class="px-4 py-3 text-right rounded-tr-lg">Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-results-tbody">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="recent-show-more-wrap" class="mt-3 text-center">
+                            <button onclick="showMoreRecent(event)" class="text-sm font-medium text-blue-600 hover:text-blue-700">Show all</button>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: DAILY DIGEST -->
+            <div id="view-digest" class="view-section hidden max-w-4xl mx-auto">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="bg-slate-900 p-6 md:p-8 text-center text-white">
+                        <h2 class="text-2xl md:text-3xl font-bold mb-2">Daily Predictions Ticket</h2>
+                        <p class="text-slate-400" id="digest-date">Generated today</p>
+                    </div>
+                    <div class="p-4 md:p-8">
+                        <div class="flex justify-end mb-4 gap-3">
+                            <button onclick="exportMarkdown()" class="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium transition">
+                                <i data-lucide="download" class="w-4 h-4"></i> Copy Markdown
+                            </button>
+                        </div>
+                        <div id="digest-content" class="space-y-6 prose max-w-none">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Parlay Builder Sidebar -->
+    <div id="parlay-sidebar" class="fixed inset-y-0 right-0 w-full sm:w-96 max-w-full bg-white shadow-2xl transform translate-x-full transition-transform duration-300 z-50 flex flex-col border-l border-slate-200">
+        <div class="p-4 md:p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+            <h3 class="font-bold text-lg flex items-center gap-2"><i data-lucide="ticket" class="text-blue-600"></i> Parlay Builder</h3>
+            <div class="flex items-center gap-1">
+                <button id="parlay-clear-btn" onclick="clearParlay()" class="touch hidden px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg flex items-center gap-1.5 transition"><i data-lucide="trash-2" class="w-4 h-4"></i> Clear all</button>
+                <button onclick="toggleParlay()" class="touch w-11 h-11 -mr-2 flex items-center justify-center text-slate-400 hover:text-slate-600" aria-label="Close parlay"><i data-lucide="x"></i></button>
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-3" id="parlay-items">
+            <!-- Items added by JS -->
+            <div class="text-center text-slate-400 mt-10 text-sm">No games added to parlay yet.</div>
+        </div>
+        <div class="p-4 md:p-6 pb-6 border-t border-slate-200 bg-slate-50">
+            <div class="flex justify-between mb-2 text-sm">
+                <span class="text-slate-500">Selections:</span>
+                <span class="font-bold text-slate-800" id="parlay-total-picks">0</span>
+            </div>
+            <div class="flex justify-between mb-4 text-sm">
+                <span class="text-slate-500">Combined Odds:</span>
+                <span class="font-bold text-blue-600 text-lg" id="parlay-total-odds">0.00</span>
+            </div>
+            <textarea id="parlay-summary" class="w-full text-xs text-slate-500 bg-white border border-slate-200 rounded p-2 mb-4 h-24" readonly></textarea>
+            <button onclick="copyParlay()" class="touch w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition">
+                <i data-lucide="copy" class="w-4 h-4"></i> Copy Summary
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile bottom tab bar (phones). Desktop uses the sidebar. -->
+    <nav class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-slate-900 text-slate-300 border-t border-slate-800 tab-bottom grid grid-cols-3" aria-label="Sections">
+        <button onclick="switchTab('dashboard')" id="mtab-dashboard" class="mtab touch py-2.5 flex flex-col items-center justify-center gap-1 text-xs font-medium">
+            <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Predictions
+        </button>
+        <button onclick="switchTab('accuracy')" id="mtab-accuracy" class="mtab touch py-2.5 flex flex-col items-center justify-center gap-1 text-xs font-medium">
+            <i data-lucide="pie-chart" class="w-5 h-5"></i> Accuracy
+        </button>
+        <button onclick="switchTab('digest')" id="mtab-digest" class="mtab touch py-2.5 flex flex-col items-center justify-center gap-1 text-xs font-medium">
+            <i data-lucide="file-text" class="w-5 h-5"></i> Digest
+        </button>
+    </nav>
+
+    <!-- Overlay -->
+    <div id="overlay" onclick="toggleParlay()" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-40 transition-opacity"></div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // State
+        let games = [];
+        let parlay = [];
+        try { parlay = JSON.parse(localStorage.getItem('tessa_parlay') || '[]'); } catch (e) { parlay = []; }
+        function saveParlay() { try { localStorage.setItem('tessa_parlay', JSON.stringify(parlay)); } catch (e) {} }
+
+        // Kickoff times shown in Africa/Lagos (WAT, UTC+1)
+        function formatWAT(iso) {
+            const d = new Date(iso);
+            const date = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Lagos' });
+            const time = d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Lagos' }).replace(' ', '').toLowerCase();
+            return date + ', ' + time + ' WAT';
+        }
+        function isKickedOff(iso) { return new Date(iso).getTime() <= Date.now(); }
+        let stats = null;
+        let isParlayOpen = false;
+        
+        // Define your API base URL (empty for relative path when deployed)
+        const API_BASE = '/api'; 
+
+        // Pick label: 'Over 2.5', 'Under 1.5', 'BTTS Yes', 'BTTS No'
+        function pickLabel(g) {
+            if (g.market === 'BTTS') return `BTTS ${g.pick}`;
+            return `${g.pick} ${g.line ?? 2.5}`;
+        }
+
+        // Initial Load
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchGames();
+            fetchStats();
+            document.getElementById('parlay-count').textContent = parlay.length;
+            document.getElementById('mtab-dashboard').classList.add('text-blue-400');
+            document.getElementById('digest-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        });
+
+        // Navigation
+        function switchTab(tabId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            
+            document.querySelectorAll('.tab-link').forEach(el => {
+                el.classList.remove('bg-blue-600', 'text-white');
+                el.classList.add('text-slate-300', 'hover:bg-slate-800');
+            });
+            const activeTab = document.getElementById(`tab-${tabId}`);
+            activeTab.classList.remove('text-slate-300', 'hover:bg-slate-800');
+            activeTab.classList.add('bg-blue-600', 'text-white');
+            document.querySelectorAll('.mtab').forEach(el => el.classList.remove('text-blue-400', 'text-white'));
+            const mt = document.getElementById(`mtab-${tabId}`);
+            if (mt) mt.classList.add('text-white');
+            document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('text-blue-400', el.id === `mtab-${tabId}`));
+            document.getElementById('main-scroll-area').scrollTop = 0;
+
+            let title = "Game Predictions";
+            if(tabId === 'accuracy') title = "Accuracy Dashboard";
+            if(tabId === 'digest') title = "Daily Digest";
+            document.getElementById('page-title').textContent = title;
+
+            if(tabId === 'digest') generateDigest();
+        }
+
+        // Fetch Games
+        async function fetchGames() {
+            try {
+                const res = await fetch(`${API_BASE}/games`);
+                const data = await res.json();
+                games = data.games || [];
+                renderGames();
+            } catch (err) {
+                showToast('Failed to load games', 'error');
+            }
+        }
+
+        // Fetch Stats
+        async function fetchStats() {
+            try {
+                const res = await fetch(`${API_BASE}/stats`);
+                stats = await res.json();
+                renderStats();
+            } catch (err) {
+                console.error("Failed to load stats", err);
+            }
+        }
+
+        // Render Dashboard Games (grouped: one card per fixture, one chip per line)
+        const pickIndex = {};   // pick id -> pick merged with its fixture, for parlay toggles
+        const selection = {};   // `${scope}:${gameId}` -> selected line key (OU-1.5, OU-2.5, BTTS...)
+        function pickKey(p) { return p.market === 'BTTS' ? 'BTTS' : `OU-${p.line ?? 2.5}`; }
+        function chipLabel(p) { return p.market === 'BTTS' ? 'BTTS' : `O/U ${p.line ?? 2.5}`; }
+        function isSettledPick(p) { return p.result === 'won' || p.result === 'lost'; }
+        function pickId(g, p) { return p.id || `${g.gid}-${pickKey(p)}`; }
+
+        // Flat pick rows -> one group per fixture (api_id), one entry per line/market
+        function buildGroups(rows) {
+            const map = new Map();
+            rows.forEach(r => {
+                if (!r.pick) return;
+                const gid = String(r.api_id ?? r.id);
+                if (!map.has(gid)) map.set(gid, { gid, meta: null, picks: [] });
+                const g = map.get(gid);
+                if (!g.meta && r.home_team) g.meta = r;
+                const key = pickKey(r);
+                if (!g.picks.some(p => pickKey(p) === key)) g.picks.push(r);
+            });
+            return [...map.values()]
+                .filter(g => g.meta)
+                .map(g => {
+                    g.picks.sort((a, b) => (a.market === 'BTTS') - (b.market === 'BTTS') || (a.line ?? 2.5) - (b.line ?? 2.5));
+                    return g;
+                });
+        }
+
+        // Filters apply per pick: a game stays only if it has a pick on the selected line
+        function filterGroups() {
+            const sportFilter = document.getElementById('filter-sport').value;
+            const confFilter = document.getElementById('filter-confidence').value;
+            const lineFilter = document.getElementById('filter-line').value;
+            const matchSport = m => sportFilter === 'all' ||
+                (sportFilter === 'football' && m.sport.startsWith('soccer')) ||
+                m.sport === sportFilter;
+            return buildGroups(games)
+                .filter(g => matchSport(g.meta))
+                .map(g => ({
+                    ...g,
+                    picks: g.picks.filter(p => {
+                        const matchConf = confFilter === 'all' ||
+                            (p.confidence && p.confidence.toLowerCase() === confFilter);
+                        const matchLine = lineFilter === 'all' ||
+                            (p.market !== 'BTTS' && String(p.line ?? 2.5) === lineFilter);
+                        return matchConf && matchLine;
+                    })
+                }))
+                .filter(g => g.picks.length > 0);
+        }
+
+        // Drop parlay selections whose game has concluded (kickoff passed, or pick graded won/lost)
+        function isConcludedParlayItem(item) {
+            const fresh = games.find(r => r.pick && pickId({ gid: String(r.api_id ?? r.id) }, r) === item.id);
+            return isKickedOff(item.game_time) || isSettledPick(fresh || item);
+        }
+        function pruneConcludedParlay() {
+            const before = parlay.length;
+            parlay = parlay.filter(item => !isConcludedParlayItem(item));
+            if (parlay.length !== before) {
+                saveParlay();
+                document.getElementById('parlay-count').textContent = parlay.length;
+                if (isParlayOpen) updateParlayUI();
+            }
+        }
+
+        function renderGames() {
+            pruneConcludedParlay();
+            const container = document.getElementById('games-container');
+            const settledContainer = document.getElementById('settled-container');
+            const emptyState = document.getElementById('empty-state');
+            container.innerHTML = '';
+            settledContainer.innerHTML = '';
+            Object.keys(pickIndex).forEach(k => delete pickIndex[k]);
+
+            const groups = filterGroups();
+            groups.forEach(g => g.picks.forEach(p => {
+                const pid = pickId(g, p);
+                pickIndex[pid] = { ...g.meta, ...p, id: pid };
+            }));
+
+            // A game is settled only when every line on it is graded
+            const isSettledGroup = g => g.picks.every(isSettledPick);
+            const settled = groups.filter(isSettledGroup);
+            const live = groups.filter(g => !isSettledGroup(g));
+
+            // Predicted fixtures first, then by kickoff
+            const hasPred = g => g.picks.some(p => p.projected);
+            live.sort((a, b) => (hasPred(b) - hasPred(a)) || (new Date(a.meta.game_time) - new Date(b.meta.game_time)));
+            settled.sort((a, b) => new Date(a.meta.game_time) - new Date(b.meta.game_time));
+
+            document.getElementById('settled-count').textContent = settled.length;
+            settled.forEach(g => settledContainer.appendChild(createGameCard(g, 'settled')));
+
+            if (live.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                live.forEach(g => container.appendChild(createGameCard(g, 'live')));
+            }
+            lucide.createIcons();
+        }
+
+        function selectPick(scope, gid, key) {
+            selection[`${scope}:${gid}`] = key;
+            renderGames();
+        }
+
+        function toggleParlayPick(pid) {
+            const pick = pickIndex[pid];
+            if (pick) toggleParlayItem(pick);
+        }
+
+        function toggleSettled() {
+            const box = document.getElementById('settled-container');
+            const hidden = box.classList.toggle('hidden');
+            document.getElementById('settled-arrow').textContent = hidden ? 'Show' : 'Hide';
+        }
+
+        function createGameCard(g, scope) {
+            const m = g.meta;
+            const div = document.createElement('div');
+            div.className = 'bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col';
+
+            const isNba = m.sport === 'basketball_nba';
+            const icon = isNba ? 'dribbble' : 'trophy';
+            const time = formatWAT(m.game_time);
+            const kicked = isKickedOff(m.game_time);
+
+            const statusBadge = kicked
+                ? `<span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-medium border border-gray-200">Concluded</span>`
+                : `<span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 rounded font-medium border border-blue-100">Upcoming</span>`;
+
+            // Which line is open inside this card (default: first line shown)
+            const sKey = `${scope}:${g.gid}`;
+            let selKey = selection[sKey];
+            if (!g.picks.some(p => pickKey(p) === selKey)) selKey = pickKey(g.picks[0]);
+            selection[sKey] = selKey;
+            const sel = g.picks.find(p => pickKey(p) === selKey);
+
+            const chips = g.picks.map(p => {
+                const k = pickKey(p);
+                const active = k === selKey;
+                let mark = '';
+                if (isSettledPick(p)) {
+                    mark = p.result === 'won'
+                        ? `<span class="${active ? 'text-emerald-300' : 'text-emerald-600'} font-bold">W</span>`
+                        : `<span class="${active ? 'text-red-300' : 'text-red-600'} font-bold">L</span>`;
+                }
+                const cls = active
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400';
+                return `<button onclick="selectPick('${scope}','${g.gid}','${k}')" aria-pressed="${active}" class="touch inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border text-sm font-semibold transition ${cls}">${chipLabel(p)} <span class="font-medium ${active ? 'opacity-80' : 'opacity-70'}">${p.pick}</span> ${mark}</button>`;
+            }).join('');
+
+            const tier = (sel.confidence || 'unknown').toLowerCase();
+            const tierCls = {
+                high: 'bg-emerald-100 text-emerald-700',
+                medium: 'bg-amber-100 text-amber-700',
+                low: 'bg-slate-200 text-slate-600'
+            }[tier] || 'bg-slate-100 text-slate-600';
+            const confPct = sel.confidence_score != null ? `${sel.confidence_score}%` : 'n/a';
+            const reasoning = sel.reasoning && sel.reasoning.length > 0
+                ? sel.reasoning[0]
+                : 'Statistical projection based on baseline metrics.';
+
+            let resultRow = '';
+            if (isSettledPick(sel)) {
+                const won = sel.result === 'won';
+                resultRow = `<div class="flex items-center justify-between gap-3 bg-white border border-slate-100 p-3 rounded-lg text-sm">
+                        <span class="text-slate-600">Final total: <span class="font-semibold text-slate-800">${sel.actual_total ?? 'n/a'}</span></span>
+                        <span class="px-2.5 py-1 rounded text-xs font-bold ${won ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}">${sel.result.toUpperCase()}</span>
+                    </div>`;
+            }
+
+            const pid = pickId(g, sel);
+            const inParlay = parlay.some(p => p.id === pid);
+            const canAdd = !isSettledPick(sel) && !kicked;
+            const parlayBtn = canAdd ? `
+                        <button onclick="toggleParlayPick('${pid}')"
+                                class="touch w-full py-2.5 rounded-lg text-sm font-medium transition ${inParlay ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100' : 'bg-slate-900 text-white hover:bg-slate-800'}">
+                            ${inParlay ? 'Remove from Parlay' : 'Add to Parlay'}
+                        </button>` : '';
+
+            div.innerHTML = `
+                <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+                    <div class="flex items-center gap-2 text-slate-500 text-sm font-medium">
+                        <i data-lucide="${icon}" class="w-4 h-4"></i> ${isNba ? 'NBA' : (m.league || 'Football')}
+                    </div>
+                    ${statusBadge}
+                </div>
+                <div class="px-4 pt-4 pb-3 bg-white">
+                    <div class="font-bold text-slate-800 break-words">${m.home_team}</div>
+                    <div class="flex justify-between items-center gap-2 text-sm text-slate-500 mt-0.5">
+                        <span class="break-words min-w-0">vs ${m.away_team}</span>
+                        <span class="shrink-0">${time}</span>
+                    </div>
+                </div>
+                <div class="px-4 pb-3 flex flex-wrap gap-2">${chips}</div>
+                <div class="p-4 bg-slate-50 border-t border-slate-100 space-y-3">
+                    <div class="flex items-center justify-between gap-2 flex-wrap">
+                        <span class="font-bold text-xl break-words">${pickLabel(sel)}</span>
+                        <span class="text-xs px-2 py-1 rounded-full font-semibold ${tierCls}">${tier.toUpperCase()}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <p class="text-xs text-slate-500 mb-0.5">Confidence</p>
+                            <p class="font-semibold text-slate-800">${confPct}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500 mb-0.5">${sel.market === 'BTTS' ? 'Expected Goals' : 'AI Projection'}</p>
+                            <p class="font-semibold text-indigo-600">${sel.projected ?? 'n/a'}</p>
+                        </div>
+                    </div>
+                    <p class="text-sm text-slate-600 bg-white p-3 rounded-lg italic border border-slate-100 break-words">
+                        <i data-lucide="bot" class="w-4 h-4 inline-block mr-1 text-slate-400"></i>
+                        "${reasoning}"
+                    </p>
+                    ${resultRow}
+                    ${parlayBtn}
+                </div>
+            `;
+            return div;
+        }
+
+        // --- Actions ---
+        async function syncGames() {
+            const btn = document.getElementById('btn-sync');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = `<span class="loader"></span> <span class="ml-2">Syncing...</span>`;
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_BASE}/sync`, { method: 'POST' });
+                const data = await res.json();
+                
+                let msg = `Synced! Processed ${data.processed} predictions.`;
+                if(data.neglected > 0) {
+                    msg += ` ${data.neglected} skipped (Timeout protection). Run sync again.`;
+                    showToast(msg, 'info');
+                } else {
+                    showToast(msg, 'success');
+                }
+                
+                await fetchGames();
+            } catch (err) {
+                showToast('Sync failed. Please try again.', 'error');
+            } finally {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        async function updateResults() {
+            const btn = document.getElementById('btn-update');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = `<span class="loader border-slate-500 border-t-slate-800"></span>`;
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_BASE}/update-results`, { method: 'POST' });
+                const data = await res.json();
+                showToast(`Updated ${data.updated} match results.`, 'success');
+                await fetchGames();
+                await fetchStats();
+            } catch (err) {
+                showToast('Update failed.', 'error');
+            } finally {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        // --- Parlay Logic ---
+        function toggleParlay() {
+            const sidebar = document.getElementById('parlay-sidebar');
+            const overlay = document.getElementById('overlay');
+            isParlayOpen = !isParlayOpen;
+            
+            if (isParlayOpen) {
+                sidebar.classList.remove('translate-x-full');
+                overlay.classList.remove('hidden');
+                updateParlayUI();
+            } else {
+                sidebar.classList.add('translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function toggleParlayItem(game) {
+            const index = parlay.findIndex(p => p.id === game.id);
+            if (index > -1) {
+                parlay.splice(index, 1);
+            } else {
+                parlay.push(game);
+            }
+            saveParlay();
+            document.getElementById('parlay-count').textContent = parlay.length;
+            renderGames(); // Update button states
+            if (isParlayOpen) updateParlayUI();
+        }
+
+        function clearParlay() {
+            if (parlay.length === 0) return;
+            if (!window.confirm(`Remove all ${parlay.length} selection(s) from the parlay?`)) return;
+            parlay = [];
+            saveParlay();
+            document.getElementById('parlay-count').textContent = 0;
+            renderGames();
+            updateParlayUI();
+            showToast('Parlay cleared.', 'success');
+        }
+
+        function updateParlayUI() {
+            const container = document.getElementById('parlay-items');
+            document.getElementById('parlay-clear-btn').classList.toggle('hidden', parlay.length === 0);
+
+            if (parlay.length === 0) {
+                container.innerHTML = '<div class="text-center text-slate-400 mt-10 text-sm">No games added to parlay yet.</div>';
+                document.getElementById('parlay-total-odds').textContent = '0.00';
+                document.getElementById('parlay-summary').value = '';
+                document.getElementById('parlay-total-picks').textContent = '0';
+                return;
+            }
+
+            container.innerHTML = '';
+            let totalOdds = 1;
+            let summaryText = "Tessa AI Parlay:\n";
+
+            parlay.forEach(game => {
+                // Mock odds extraction from raw data if needed, or default standard vig
+                let pickOdds = 1.91; // Standard -110 American odds in decimal
+                try {
+                    if (game.odds_data) {
+                        const oddsData = JSON.parse(game.odds_data);
+                        const overOutcome = oddsData.outcomes.find(o => o.name === 'Over');
+                        const underOutcome = oddsData.outcomes.find(o => o.name === 'Under');
+                        if (game.market !== 'BTTS' && game.pick === 'Over' && overOutcome) pickOdds = overOutcome.price;
+                        if (game.market !== 'BTTS' && game.pick === 'Under' && underOutcome) pickOdds = underOutcome.price;
+                    }
+                } catch(e) {}
+
+                totalOdds *= pickOdds;
+                summaryText += `• ${game.home_team} vs ${game.away_team} - ${pickLabel(game)} @ ${pickOdds.toFixed(2)}\n`;
+
+                const el = document.createElement('div');
+                el.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm relative';
+                el.innerHTML = `
+                    <button onclick='toggleParlayItem(${JSON.stringify(game).replace(/'/g, "&apos;")})' class="absolute top-2 right-2 text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    <p class="text-xs font-semibold text-slate-700">${game.home_team}</p>
+                    <p class="text-xs text-slate-500 mb-2">vs ${game.away_team}</p>
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="font-bold text-blue-600">${pickLabel(game)}</span>
+                        <span class="text-slate-600 font-medium">@ ${pickOdds.toFixed(2)}</span>
+                    </div>
+                `;
+                container.appendChild(el);
+            });
+
+            summaryText += `\nCombined Odds: ${totalOdds.toFixed(2)}`;
+            
+            document.getElementById('parlay-total-picks').textContent = parlay.length;
+            document.getElementById('parlay-total-odds').textContent = totalOdds.toFixed(2);
+            document.getElementById('parlay-summary').value = summaryText;
+            
+            lucide.createIcons({ root: container });
+        }
+
+        function copyParlay() {
+            const text = document.getElementById('parlay-summary').value;
+            if(!text) return;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('Parlay copied to clipboard!', 'success');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast('Parlay copied to clipboard!', 'success');
+            });
+        }
+
+        // --- Accuracy Stats & Charts ---
+        function renderStats() {
+            if(!stats) return;
+
+            document.getElementById('stat-total').textContent = stats.total;
+            document.getElementById('stat-winrate').textContent = stats.totalResolved > 0 ? `${Math.round((stats.wins / stats.totalResolved) * 100)}%` : '0%';
+            document.getElementById('stat-record').textContent = `${stats.wins}-${stats.losses}`;
+            document.getElementById('stat-streak').textContent = `${stats.streak > 0 ? 'W'+stats.streak : (stats.streak < 0 ? 'L'+Math.abs(stats.streak) : '0')}`;
+
+            // Per-line accuracy (1.5 / 2.5 / 3.5), overall stats above stay unchanged.
+            const ls = document.getElementById('line-stats');
+            if (ls && stats.byLine) {
+                ls.innerHTML = ['1.5', '2.5', '3.5'].map(l => {
+                    const r = stats.byLine[l] || { wins: 0, losses: 0 };
+                    const n = r.wins + r.losses;
+                    const pct = n ? `${Math.round((r.wins / n) * 100)}%` : '-';
+                    return `<div class="rounded-lg border border-slate-100 p-4"><p class="text-sm text-slate-500 font-medium mb-1">O/U ${l}</p><h3 class="text-2xl font-bold text-blue-600">${pct}</h3><p class="text-sm text-slate-500">${r.wins}-${r.losses} (W-L)</p></div>`;
+                }).join('');
+            }
+
+            // Recent Results Table
+            const tbody = document.getElementById('recent-results-tbody');
+            tbody.innerHTML = '';
+            const cardBox = document.getElementById('recent-results-cards');
+            cardBox.innerHTML = '';
+            // Wins on top, losses underneath; stable sort keeps most-recent-first within each group.
+            const sortedRecent = [...stats.recent].sort((a, b) =>
+                (a.result === 'won' ? 0 : 1) - (b.result === 'won' ? 0 : 1));
+            // Folded by default; show a capped slice until "Show all" is tapped.
+            const countEl = document.getElementById('recent-count');
+            if (countEl) countEl.textContent = `(${stats.recent.length})`;
+            const shown = recentExpanded ? sortedRecent : sortedRecent.slice(0, RECENT_LIMIT);
+            const wrap = document.getElementById('recent-show-more-wrap');
+            if (wrap) wrap.style.display = sortedRecent.length > RECENT_LIMIT ? '' : 'none';
+            window.__latestRecent = sortedRecent;
+            // Group picks from the same match into one card: "Torino vs Como" with all its lines together.
+            const groups = [];
+            const byKey = {};
+            shown.forEach(game => {
+                const k = `${game.home_team}|${game.away_team}`;
+                if (!byKey[k]) { byKey[k] = { home: game.home_team, away: game.away_team, rows: [] }; groups.push(byKey[k]); }
+                byKey[k].rows.push(game);
+            });
+            groups.forEach(grp => {
+                const rowsHtml = grp.rows.map(game => {
+                    let rClass = game.result === 'won' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
+                    return `<div class="flex items-center justify-between gap-3 py-1.5 border-b border-slate-100 last:border-0">
+                            <span class="text-xs text-slate-600">${pickLabel(game)}</span>
+                            <span class="shrink-0 px-2.5 py-1 rounded text-xs font-bold ${rClass}">${game.result.toUpperCase()}</span>
+                        </div>`;
+                }).join('');
+                const anyWin = grp.rows.some(g => g.result === 'won');
+                const allSame = grp.rows.every(g => g.result === grp.rows[0].result);
+                const badgeCls = allSame ? (grp.rows[0].result === 'won' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50') : 'text-slate-600 bg-slate-100';
+                const badgeTxt = allSame ? grp.rows[0].result.toUpperCase() : `${grp.rows.filter(g=>g.result==='won').length}/${grp.rows.length}`;
+                cardBox.innerHTML += `
+                    <div class="p-3 rounded-lg border border-slate-100 bg-slate-50">
+                        <div class="flex items-center justify-between gap-3 mb-1">
+                            <div class="min-w-0">
+                                <p class="font-medium text-slate-800 text-sm truncate">${grp.home}</p>
+                                <p class="text-xs text-slate-400 truncate">vs ${grp.away}</p>
+                            </div>
+                            <span class="shrink-0 px-2.5 py-1.5 rounded text-xs font-bold ${badgeCls}">${badgeTxt}</span>
+                        </div>
+                        ${rowsHtml}
+                    </div>
+                `;
+                grp.rows.forEach(game => {
+                    let rClass = game.result === 'won' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
+                    tbody.innerHTML += `
+                        <tr class="border-b border-slate-100 last:border-0">
+                            <td class="px-4 py-3 font-medium text-slate-800">${game.home_team} <span class="text-xs text-slate-400 font-normal">vs ${game.away_team}</span><p class="text-xs text-slate-500 mt-0.5">${pickLabel(game)}</p></td>
+                            <td class="px-4 py-3 text-right"><span class="px-2 py-1 rounded text-xs font-bold ${rClass}">${game.result.toUpperCase()}</span></td>
+                        </tr>
+                    `;
+                });
+            });
+
+            // Chart
+            const ctx = document.getElementById('confidenceChart').getContext('2d');
+            
+            // Destroy old chart if exists
+            if(window.confChartInstance) window.confChartInstance.destroy();
+
+            window.confChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['High (Won)', 'High (Lost)', 'Medium (Won)', 'Medium (Lost)', 'Low (Won)', 'Low (Lost)'],
+                    datasets: [{
+                        data: [
+                            stats.byConfidence.high.wins, stats.byConfidence.high.losses,
+                            stats.byConfidence.medium.wins, stats.byConfidence.medium.losses,
+                            stats.byConfidence.low.wins, stats.byConfidence.low.losses
+                        ],
+                        backgroundColor: [
+                            '#10b981', '#a7f3d0', // High
+                            '#f59e0b', '#fde68a', // Med
+                            '#64748b', '#cbd5e1'  // Low
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } }
+                }
+            });
+        }
+
+        // --- Recent Results fold + pagination ---
+        function renderRecentInto(cardBox, tbody, list) {
+            const groups = [];
+            const byKey = {};
+            list.forEach(game => {
+                const k = `${game.home_team}|${game.away_team}`;
+                if (!byKey[k]) { byKey[k] = { home: game.home_team, away: game.away_team, rows: [] }; groups.push(byKey[k]); }
+                byKey[k].rows.push(game);
+            });
+            groups.forEach(grp => {
+                const rowsHtml = grp.rows.map(game => {
+                    let rClass = game.result === 'won' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
+                    return `<div class="flex items-center justify-between gap-3 py-1.5 border-b border-slate-100 last:border-0">
+                            <span class="text-xs text-slate-600">${pickLabel(game)}</span>
+                            <span class="shrink-0 px-2.5 py-1 rounded text-xs font-bold ${rClass}">${game.result.toUpperCase()}</span>
+                        </div>`;
+                }).join('');
+                const allSame = grp.rows.every(g => g.result === grp.rows[0].result);
+                const badgeCls = allSame ? (grp.rows[0].result === 'won' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50') : 'text-slate-600 bg-slate-100';
+                const badgeTxt = allSame ? grp.rows[0].result.toUpperCase() : `${grp.rows.filter(g=>g.result==='won').length}/${grp.rows.length}`;
+                cardBox.innerHTML += `
+                    <div class="p-3 rounded-lg border border-slate-100 bg-slate-50">
+                        <div class="flex items-center justify-between gap-3 mb-1">
+                            <div class="min-w-0">
+                                <p class="font-medium text-slate-800 text-sm truncate">${grp.home}</p>
+                                <p class="text-xs text-slate-400 truncate">vs ${grp.away}</p>
+                            </div>
+                            <span class="shrink-0 px-2.5 py-1.5 rounded text-xs font-bold ${badgeCls}">${badgeTxt}</span>
+                        </div>
+                        ${rowsHtml}
+                    </div>
+                `;
+                grp.rows.forEach(game => {
+                    let rClass = game.result === 'won' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
+                    tbody.innerHTML += `
+                        <tr class="border-b border-slate-100 last:border-0">
+                            <td class="px-4 py-3 font-medium text-slate-800">${game.home_team} <span class="text-xs text-slate-400 font-normal">vs ${game.away_team}</span><p class="text-xs text-slate-500 mt-0.5">${pickLabel(game)}</p></td>
+                            <td class="px-4 py-3 text-right"><span class="px-2 py-1 rounded text-xs font-bold ${rClass}">${game.result.toUpperCase()}</span></td>
+                        </tr>
+                    `;
+                });
+            });
+        }
+        const RECENT_LIMIT = 5;
+        let recentExpanded = false;
+        function toggleRecent(forceOpen) {
+            recentExpanded = typeof forceOpen === 'boolean' ? forceOpen : !recentExpanded;
+            const body = document.getElementById('recent-results-body');
+            const chev = document.getElementById('recent-chevron');
+            body.classList.toggle('hidden', !recentExpanded);
+            chev.style.transform = recentExpanded ? 'rotate(180deg)' : '';
+            if (recentExpanded && typeof renderStats === 'function') { /* results already rendered */ }
+        }
+        function showMoreRecent(ev) {
+            if (ev) ev.stopPropagation();
+            if (!recentExpanded) { toggleRecent(true); document.getElementById('recent-results-body').classList.remove('hidden'); const ch = document.getElementById('recent-chevron'); if (ch) ch.style.transform = 'rotate(180deg)'; }
+            const all = window.__latestRecent || [];
+            const cardBox2 = document.getElementById('recent-results-cards');
+            const tbody2 = document.getElementById('recent-results-tbody');
+            if (!cardBox2 || !tbody2) return;
+            if (tbody2.children.length < RECENT_LIMIT && cardBox2.children.length < RECENT_LIMIT) { /* capped render, fine */ }
+            cardBox2.innerHTML = '';
+            tbody2.innerHTML = '';
+            renderRecentInto(cardBox2, tbody2, all);
+            const wrap = document.getElementById('recent-show-more-wrap');
+            if (wrap) wrap.style.display = 'none';
+        }
+
+        // --- Daily Digest ---
+        function generateDigest() {
+            const container = document.getElementById('digest-content');
+            let content = ``;
+            
+            const predicted = games.filter(g => g.projected && g.result === 'pending');
+            const highConf = predicted.filter(g => g.confidence === 'high');
+            const others = predicted.filter(g => g.confidence !== 'high');
+
+            if(predicted.length === 0) {
+                container.innerHTML = `<p class="text-slate-500 italic">No pending predictions available for today.</p>`;
+                return;
+            }
+
+            if(highConf.length > 0) {
+                content += `<h3 class="text-xl font-bold text-emerald-600 mb-4 flex items-center gap-2"><i data-lucide="flame"></i> High Confidence Picks</h3><div class="space-y-4 mb-8">`;
+                content += buildDigestGroup(highConf);
+                content += `</div>`;
+            }
+
+            if(others.length > 0) {
+                content += `<h3 class="text-xl font-bold text-slate-700 mb-4 flex items-center gap-2"><i data-lucide="list"></i> Standard Picks</h3><div class="space-y-4">`;
+                content += buildDigestGroup(others);
+                content += `</div>`;
+            }
+
+            container.innerHTML = content;
+            lucide.createIcons({ root: container });
+        }
+
+        function buildDigestGroup(list) {
+            // One card per match: all its lines (Over 1.5, Under 3.5...) sit together.
+            const groups = [];
+            const byKey = {};
+            list.forEach(g => {
+                const k = `${g.home_team}|${g.away_team}`;
+                if (!byKey[k]) { byKey[k] = { home: g.home_team, away: g.away_team, rows: [] }; groups.push(byKey[k]); }
+                byKey[k].rows.push(g);
+            });
+            return groups.map(grp => {
+                if (grp.rows.length === 1) return buildDigestItem(grp.rows[0]);
+                const rows = grp.rows.map(g => `
+                        <div class="flex items-start justify-between gap-3 py-2 border-t border-slate-200 first:border-t-0">
+                            <span class="text-sm font-semibold text-blue-600 whitespace-nowrap">${pickLabel(g)}</span>
+                            <p class="text-sm text-slate-600 italic text-right flex-1">"${g.reasoning ? g.reasoning[0] : 'Statistical projection.'}"</p>
+                        </div>`).join('');
+                return `
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-slate-800">${grp.home} vs ${grp.away}</span>
+                        <span class="text-xs font-bold text-slate-500">${grp.rows.length} picks</span>
+                    </div>
+                    ${rows}
+                </div>`;
+            }).join('');
+        }
+
+        function buildDigestItem(g) {
+            return `
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-slate-800">${g.home_team} vs ${g.away_team}</span>
+                        <span class="text-sm font-bold text-blue-600">${pickLabel(g)}</span>
+                    </div>
+                    <p class="text-sm text-slate-600 italic">"${g.reasoning ? g.reasoning[0] : 'Statistical projection.'}"</p>
+                </div>
+            `;
+        }
+
+        function exportMarkdown() {
+            const predicted = games.filter(g => g.projected && g.result === 'pending');
+            let md = `# Tessa AI Daily Digest - ${new Date().toLocaleDateString()}\n\n`;
+            
+            const mdGroup = (list) => {
+                const byKey = {};
+                list.forEach(g => {
+                    const k = `${g.home_team} vs ${g.away_team}`;
+                    (byKey[k] = byKey[k] || []).push(g);
+                });
+                return Object.entries(byKey).map(([m, rows]) =>
+                    `- **${m}**\n` + rows.map(g => `  - ${pickLabel(g)} (Projected: ${g.projected ?? 'n/a'}) — *${g.reasoning ? g.reasoning[0] : 'N/A'}*`).join('\n')
+                ).join('\n') + '\n';
+            };
+            md += `## High Confidence Picks\n`;
+            md += mdGroup(predicted.filter(g => g.confidence === 'high'));
+
+            md += `\n## Standard Picks\n`;
+            md += mdGroup(predicted.filter(g => g.confidence !== 'high'));
+
+            navigator.clipboard.writeText(md).then(() => {
+                showToast('Markdown copied to clipboard!', 'success');
+            }).catch(() => {
+                const textArea = document.createElement("textarea");
+                textArea.value = md;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast('Markdown copied to clipboard!', 'success');
+            });
+        }
+
+        // --- Utils ---
+        function showToast(msg, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = msg;
+            container.appendChild(toast);
+            
+            // Trigger animation
+            setTimeout(() => toast.classList.add('show'), 10);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch(() => {});
+            });
+        }
+    </script>
+</body>
+</html>
