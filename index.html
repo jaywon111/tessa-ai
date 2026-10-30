@@ -157,7 +157,7 @@
                 </div>
                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100 mb-6 md:mb-8">
                     <h3 class="font-semibold mb-4 text-slate-700">Accuracy by Line</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-6" id="line-stats"></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6" id="line-stats"></div>
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                     <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-100">
@@ -757,6 +757,10 @@
                     const pct = n ? `${Math.round((r.wins / n) * 100)}%` : '-';
                     return `<div class="rounded-lg border border-slate-100 p-4"><p class="text-sm text-slate-500 font-medium mb-1">O/U ${l}</p><h3 class="text-2xl font-bold text-blue-600">${pct}</h3><p class="text-sm text-slate-500">${r.wins}-${r.losses} (W-L)</p></div>`;
                 }).join('');
+                const btts = stats.byMarket?.BTTS || { wins: 0, losses: 0 };
+                const bttsCount = btts.wins + btts.losses;
+                const bttsPct = bttsCount ? `${Math.round((btts.wins / bttsCount) * 100)}%` : '-';
+                ls.innerHTML += `<div class="rounded-lg border border-slate-100 p-4"><p class="text-sm text-slate-500 font-medium mb-1">BTTS</p><h3 class="text-2xl font-bold text-blue-600">${bttsPct}</h3><p class="text-sm text-slate-500">${btts.wins}-${btts.losses} (W-L)</p></div>`;
             }
 
             // Recent Results Table

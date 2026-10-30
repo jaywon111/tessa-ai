@@ -258,7 +258,10 @@ app.all('/api/sync', async (req, res) => {
             if (!haveLines.has(p.api_id)) haveLines.set(p.api_id, new Set());
             haveLines.get(p.api_id).add(p.market === 'BTTS' ? 'BTTS' : `OU|${p.line ?? DEFAULT_LINE}`);
         }
-        const needsWork = m => { const h = haveLines.get(m.id) || new Set(); return OU_LINES.some(l => !h.has(`OU|${l}`)); };
+        const needsWork = m => {
+            const h = haveLines.get(m.id) || new Set();
+            return OU_LINES.some(l => !h.has(`OU|${l}`)) || !h.has('BTTS');
+        };
         const candidates = (upcoming.matches || [])
             .filter(m => LEAGUES.includes(m.competition?.code))
             .filter(needsWork)
@@ -347,13 +350,13 @@ app.all('/api/sync', async (req, res) => {
             return `#${i + 1} ${m.competition.code} ${m.homeTeam.name} vs ${m.awayTeam.name} (kickoff ${m.utcDate})\n  ${describe('HOME ' + m.homeTeam.name, h)}\n  ${describe('AWAY ' + m.awayTeam.name, a)}\n  ${oddsLine(candOdds[i])}`;
         }).join('\n');
 
-        const prompt = `You are a football betting analyst. For each match, grade ALL THREE over/under lines separately: 1.5, 2.5 and 3.5 goals (full time). For each line, choose Over or Under and give your own confidence for THAT line. Lines can disagree (e.g. Over 1.5 with Under 3.5). Also give an optional BTTS (both teams to score) Yes or No pick, or null if you see no edge.
+        const prompt = `You are a football betting analyst. For each match, grade ALL THREE over/under lines separately: 1.5, 2.5 and 3.5 goals (full time). For each line, choose Over or Under and give your own confidence for THAT line. Lines can disagree (e.g. Over 1.5 with Under 3.5). Also give a BTTS (both teams to score) Yes or No pick for every match.
 
 Confidence (0-100) is your calibrated probability that that specific pick wins. Use 70+ only when the stats clearly agree. 55-69 is a moderate edge. 40-54 is a weak edge. Below 40 means no real edge. Samples are small (5-8 matches), so be conservative. Use the home-only and away-only splits when the match venue matters. Bookmaker odds, when given, are the market's own probability (vig removed) for each line: weigh them against form, lean toward the market unless the form edge is strong.
 reasoning is REQUIRED for every line: one sentence citing the specific numbers behind that line's pick.
 
 Return ONLY a JSON array, one object per match, in order:
-{"index": number, "projected_total": number (expected total goals), "lines": {"1.5": {"pick": "Over" or "Under", "confidence": integer 0-100, "reasoning": string}, "2.5": {same shape}, "3.5": {same shape}}, "btts": {"pick": "Yes" or "No", "confidence": integer 0-100, "reasoning": string} or null}
+{"index": number, "projected_total": number (expected total goals), "lines": {"1.5": {"pick": "Over" or "Under", "confidence": integer 0-100, "reasoning": string}, "2.5": {same shape}, "3.5": {same shape}}, "btts": {"pick": "Yes" or "No", "confidence": integer 0-100, "reasoning": string}}
 
 ${table}`;
 
@@ -399,15 +402,15 @@ ${table}`;
                 }));
                 added++;
             };
-            if (!raw) { skipped_invalid += OU_LINES.filter(l => !h.has(`OU|${l}`)).length; return; }
+            if (!raw) { skipped_invalid += OU_LINES.filter(l => !h.has(`OU|${l}`)).length + (!h.has('BTTS') ? 1 : 0); return; }
             for (const line of OU_LINES) {
                 if (h.has(`OU|${line}`)) continue;
                 const v = validSide(raw.lines?.[String(line)], ['Over', 'Under']);
                 if (!v) { skipped_invalid++; continue; }
                 push('OU', line, v);
             }
-            // BTTS only on a brand-new fixture (no O/U picks yet).
-            if (h.size === 0 && raw.btts) {
+            // Save one BTTS pick for every fixture, including fixtures with existing O/U picks.
+            if (!h.has('BTTS')) {
                 const b = validSide(raw.btts, ['Yes', 'No']);
                 if (b) push('BTTS', null, b); else skipped_invalid++;
             }
